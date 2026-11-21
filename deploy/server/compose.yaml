@@ -1,0 +1,8 @@
+services:
+  server:
+    image: ghcr.io/llaoj/aist-server:${AIST_SERVER_VERSION:-latest}
+    restart: unless-stopped
+    ports:
+      - "${AIST_SERVER_BIND:-127.0.0.1:8090}:8090"
+    volumes:
+      - ${AIST_SERVER_DATA:-./data}:/var/lib/aist

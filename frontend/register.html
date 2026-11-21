@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title data-i18n="register.meta.title">AIST - 账号注册</title>
+  <link rel="icon" type="image/svg+xml" href="logo.svg?v=__AIST_ASSET_VERSION__" />
+  <link rel="stylesheet" href="css/style.css?v=__AIST_ASSET_VERSION__" />
+</head>
+<body class="auth-page" data-server-url="__AIST_SERVER_URL__">
+  <header class="site-header">
+    <div class="container header-inner">
+      <a class="brand" href="/" aria-label="AIST — AI Shell Assistant">
+        <img class="brand-mark" src="logo.svg?v=__AIST_ASSET_VERSION__" alt="" width="32" height="32" />
+        <span class="brand-lockup">
+          <span class="brand-name">AIST</span>
+          <span class="brand-sub">AI Shell Assistant</span>
+        </span>
+      </a>
+      <div class="header-tools">
+        <div class="lang-switch" role="group" aria-label="切换语言" data-lang-switch data-i18n-aria-label="lang.switch">
+          <button type="button" data-lang="zh" aria-pressed="true">中</button>
+          <button type="button" data-lang="en" aria-pressed="false">EN</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="auth-main">
+    <div class="container auth-container">
+      <section class="auth-card">
+        <ol class="auth-steps" id="register-steps">
+          <li class="is-active" data-step-indicator="form" data-i18n="register.step.form">01 · 创建账号</li>
+          <li data-step-indicator="done" data-i18n="register.step.done">02 · 安装客户端</li>
+        </ol>
+
+        <div class="auth-body">
+          <div class="auth-alert auth-alert-error" id="auth-error" role="alert" hidden></div>
+
+          <!-- Step 1: Registration Form -->
+          <div data-view="form">
+            <h1 class="auth-title" data-i18n="register.title">使用邀请码注册</h1>
+            <p class="auth-sub" data-i18n="register.sub">创建账号后即可在终端安装并登录 AIST 客户端。</p>
+
+            <form class="auth-form" id="register-form">
+              <div class="form-field">
+                <label for="invite-code" data-i18n="register.field.invite">邀请码</label>
+                <input
+                  id="invite-code"
+                  name="invite_code"
+                  type="text"
+                  required
+                  maxlength="64"
+                  autocomplete="off"
+                  spellcheck="false"
+                  placeholder="输入邀请码"
+                  data-i18n-placeholder="register.placeholder.invite"
+                />
+              </div>
+
+              <div class="form-field">
+                <label for="register-email" data-i18n="register.field.email">邮箱</label>
+                <input
+                  id="register-email"
+                  name="email"
+                  type="email"
+                  required
+                  maxlength="255"
+                  autocomplete="email"
+                  placeholder="you@example.com"
+                  data-i18n-placeholder="register.placeholder.email"
+                />
+              </div>
+
+              <div class="form-field">
+                <label for="register-password" data-i18n="register.field.password">密码</label>
+                <div class="password-field">
+                  <input
+                    id="register-password"
+                    name="password"
+                    type="password"
+                    required
+                    minlength="8"
+                    maxlength="71"
+                    autocomplete="new-password"
+                    placeholder="至少 8 位字符"
+                    data-i18n-placeholder="register.placeholder.password"
+                  />
+                  <button
+                    class="password-toggle"
+                    type="button"
+                    id="toggle-password"
+                    aria-pressed="false"
+                    aria-label="显示密码"
+                  >
+                    <svg class="icon-eye-off" width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                      <path d="M3 3L21 21M10.58 10.58A3 3 0 0 0 13.42 13.42M9.88 5.09A10.45 10.45 0 0 1 12 5C16.5 5 20.2 7.5 22 12C21.27 13.82 20.16 15.35 18.78 16.53M6.23 6.23C4.47 7.45 3.02 9.38 2 12C3.8 16.5 7.5 19 12 19C13.88 19 15.63 18.56 17.16 17.77" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
+                    <svg class="icon-eye" width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true" hidden>
+                      <path d="M2 12C3.8 7.5 7.5 5 12 5C16.5 5 20.2 7.5 22 12C20.2 16.5 16.5 19 12 19C7.5 19 3.8 16.5 2 12Z" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+                      <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.6" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              <button class="btn btn-primary auth-submit" type="submit" id="register-submit" data-i18n="register.submit">注册</button>
+            </form>
+
+            <div class="auth-foot">
+              <a href="#reset" id="goto-reset" data-i18n="register.forgot_entry">已有账号，忘记密码？</a>
+            </div>
+          </div>
+
+          <!-- Step 2: Client Install & Login Commands -->
+          <div data-view="done" hidden>
+            <h1 class="auth-title" data-i18n="register.done.title">账号创建成功</h1>
+            <p class="auth-sub">
+              <span data-i18n="register.done.lead_prefix">账号 </span><strong class="auth-highlight" id="done-email-target"></strong><span data-i18n="register.done.lead_suffix"> 已创建。复制下方命令在终端安装客户端并登录：</span>
+            </p>
+
+            <div class="auth-alert auth-alert-success" id="done-verify-notice" role="status" hidden>
+              <span data-i18n="register.done.verify_notice">验证邮件已发出，请先点击邮件中的验证按钮激活账号，再执行下方命令登录。</span>
+              <button class="link-btn verify-resend-btn" type="button" id="resend-verification" data-i18n="register.done.resend">重新发送</button>
+            </div>
+
+            <div class="code-block code-block-primary">
+              <div class="code-head">
+                <span class="code-title">aist — install · curl</span>
+                <button class="copy-btn" type="button" data-copy data-i18n="copy.label">复制</button>
+              </div>
+              <pre><code id="done-curl-cmd">curl -fL -# __AIST_SERVER_URL__/run.sh | sh</code></pre>
+            </div>
+
+            <div class="code-block">
+              <div class="code-head">
+                <span class="code-title">aist — install · wget</span>
+                <button class="copy-btn" type="button" data-copy data-i18n="copy.label">复制</button>
+              </div>
+              <pre><code id="done-wget-cmd">wget -qO- __AIST_SERVER_URL__/run.sh | sh</code></pre>
+            </div>
+          </div>
+
+          <!-- View 3: Forgot Password -->
+          <div data-view="reset" hidden>
+            <span class="panel-kicker auth-kicker" data-i18n="register.reset.kicker">PASSWORD RESET</span>
+            <h1 class="auth-title" data-i18n="register.reset.title">重置密码</h1>
+            <p class="auth-sub" data-i18n="register.reset.sub">输入注册邮箱，我们将向你发送密码重置链接。</p>
+
+            <div class="auth-alert auth-alert-success" id="reset-success" role="status" hidden data-i18n="register.reset.sent">
+              若该邮箱已注册且当前服务端已配置邮件服务，重置链接已发送，请查收邮件（未收到请联系管理员）。
+            </div>
+
+            <form class="auth-form" id="reset-form">
+              <div class="form-field">
+                <label for="reset-email" data-i18n="register.field.email">邮箱</label>
+                <input
+                  id="reset-email"
+                  name="email"
+                  type="email"
+                  required
+                  maxlength="255"
+                  autocomplete="email"
+                  placeholder="you@example.com"
+                  data-i18n-placeholder="register.placeholder.email"
+                />
+              </div>
+
+              <button class="btn btn-primary auth-submit" type="submit" id="reset-submit" data-i18n="register.reset.submit">发送重置邮件</button>
+            </form>
+
+            <div class="auth-foot">
+              <a href="#" id="reset-back" data-i18n="register.reset.back">返回邀请码注册</a>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <script src="js/i18n.js?v=__AIST_ASSET_VERSION__"></script>
+  <script src="js/main.js?v=__AIST_ASSET_VERSION__"></script>
+  <script src="js/register.js?v=__AIST_ASSET_VERSION__"></script>
+</body>
+</html>

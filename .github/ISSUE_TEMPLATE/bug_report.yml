@@ -1,0 +1,60 @@
+name: Bug report / 问题反馈
+description: Report something that doesn't work as expected. / 报告不符合预期的行为。
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! Please **remove tokens, API keys, passwords, hostnames and IPs** from any output you paste.
+        感谢反馈！粘贴输出前请**删除 token、API Key、密码、主机名和 IP** 等敏感信息。
+
+        Security vulnerabilities: please follow [SECURITY.md](https://github.com/llaoj/aist/blob/main/SECURITY.md) instead. / 安全漏洞请按 SECURITY.md 私下报告。
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component / 组件
+      options:
+        - Client (aist)
+        - Server
+        - Install / uninstall scripts (run.sh / uninstall.sh)
+        - Docs / 文档
+        - Not sure / 不确定
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened? / 问题描述
+      description: What did you do, what did you expect, and what happened instead? / 做了什么，期望什么，实际发生了什么？
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce / 复现步骤
+      placeholder: |
+        1. aist "..."
+        2. ...
+    validations:
+      required: true
+  - type: input
+    id: client-version
+    attributes:
+      label: Client version / 客户端版本
+      description: Output of `aist version`.
+  - type: input
+    id: server-version
+    attributes:
+      label: Server version / 服务端版本
+      description: Image tag or `server` version, if you run your own server. / 自建服务端时填写镜像 tag。
+  - type: input
+    id: environment
+    attributes:
+      label: OS and architecture / 系统与架构
+      placeholder: Ubuntu 24.04 amd64 / macOS 15 arm64
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant output / 相关输出
+      description: Terminal output or server logs (redacted). / 终端输出或服务端日志（已脱敏）。
+      render: text

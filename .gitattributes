@@ -1,0 +1,6 @@
+# Shell scripts and the Makefile must keep LF line endings. CRLF breaks the
+# shebang and shell parsing on Unix, and leaves trailing carriage returns in
+# variables (e.g. a URL that then fails with "Malformed input to a URL").
+*.sh text eol=lf
+Makefile text eol=lf
+*.go text eol=lf

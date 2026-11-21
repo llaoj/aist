@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title data-i18n="meta.title">AIST - 首个 ON-CALL 运维智能体</title>
+  <meta name="description" content="AIST（AI Shell Assistant）是常驻服务器与终端控制台的 On-Call 运维智能体：自然语言诊断、确认后执行、连续分析，支持私有化部署，数据不出内网。" data-i18n-content="meta.description" />
+  <link rel="icon" type="image/svg+xml" href="logo.svg?v=__AIST_ASSET_VERSION__" />
+  <link rel="stylesheet" href="css/style.css?v=__AIST_ASSET_VERSION__" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="container header-inner">
+      <a class="brand" href="#top" aria-label="AIST — AI Shell Assistant">
+        <img class="brand-mark" src="logo.svg?v=__AIST_ASSET_VERSION__" alt="" width="32" height="32" />
+        <span class="brand-lockup">
+          <span class="brand-name">AIST</span>
+          <span class="brand-sub">AI Shell Assistant</span>
+        </span>
+      </a>
+      <nav class="nav" aria-label="主导航" data-i18n-aria-label="nav.aria">
+        <a href="#features" data-i18n="nav.features">特性</a>
+        <a href="#quickstart" data-i18n="nav.quickstart">快速开始</a>
+        <a href="#usage" data-i18n="nav.usage">使用方式</a>
+        <a href="#security" data-i18n="nav.security">安全</a>
+        <a href="https://docs.aistrun.cc/zh/" target="_blank" rel="noopener noreferrer" data-i18n="nav.docs" data-i18n-href="docs.href">文档</a>
+        <a href="#contact" data-i18n="nav.contact" data-contact-only hidden>商务洽谈</a>
+        <a class="nav-cta" href="register" data-i18n="nav.register">注册</a>
+      </nav>
+      <div class="header-tools">
+        <div class="lang-switch" role="group" aria-label="切换语言" data-lang-switch data-i18n-aria-label="lang.switch">
+          <button type="button" data-lang="zh" aria-pressed="true">中</button>
+          <button type="button" data-lang="en" aria-pressed="false">EN</button>
+        </div>
+        <button class="nav-toggle" aria-label="打开菜单" aria-expanded="false" data-i18n-aria-label="nav.open">
+          <span></span><span></span><span></span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main id="top">
+    <section class="hero">
+      <div class="container">
+        <div class="meta-row">
+          <span data-i18n="hero.meta.left">首个 ON-CALL 运维 AGENT</span>
+          <span class="meta-right" data-i18n="hero.meta.right">● 10MB · ZERO DEPENDENCY</span>
+        </div>
+
+        <div class="hero-inner">
+          <div class="hero-copy">
+            <p class="eyebrow" data-i18n="hero.eyebrow">[ 01 ] ON-CALL AGENT · 常驻终端</p>
+            <h1><span data-i18n="hero.title.line1">用自然语言，</span><br /><span class="accent" data-i18n="hero.title.line2">驱动每一次运维</span></h1>
+            <p class="lead" data-i18n="hero.lead">常驻服务器与终端控制台的 On-Call 运维智能体。自然语言诊断、确认后执行、连续分析，数据不出内网。</p>
+            <div class="hero-actions">
+              <a class="btn btn-primary" href="#quickstart" data-i18n="hero.cta.primary">快速开始</a>
+              <a class="btn btn-ghost" href="#security" data-i18n="hero.cta.ghost">查看安全设计</a>
+            </div>
+            <ul class="hero-specs">
+              <li><span class="spec-value">10MB</span><span class="spec-label" data-i18n="hero.spec.binary">单文件二进制</span></li>
+              <li><span class="spec-value">0</span><span class="spec-label" data-i18n="hero.spec.deps">运行时依赖</span></li>
+              <li><span class="spec-value" data-i18n="hero.spec.value.hosted">私有化</span><span class="spec-label" data-i18n="hero.spec.hosted">数据不出内网</span></li>
+              <li><span class="spec-value" data-i18n="hero.spec.value.memory">记忆</span><span class="spec-label" data-i18n="hero.spec.memory">越用越懂环境</span></li>
+            </ul>
+            <p class="platform-line" data-i18n="hero.platform">// linux-x86_64 · linux-arm64 · linux-armv6/v7 · linux-i386 · linux-riscv64 · darwin-x86_64 · darwin-arm64</p>
+          </div>
+
+          <figure class="hero-visual">
+            <div class="visual-meta">
+              <span>[ fig. 01 ] AIST · live</span>
+              <span class="visual-status"><i class="status-dot"></i> local / web1</span>
+            </div>
+            <div class="terminal">
+              <div class="terminal-bar">
+                <span class="dot red"></span>
+                <span class="dot yellow"></span>
+                <span class="dot green"></span>
+                <span class="terminal-title">aist — on-call agent</span>
+              </div>
+              <pre class="terminal-body"><span class="t-you">用户:</span>
+订单接口 P99 延迟升高，流控和扩容都没效果，帮我定位瓶颈
+
+<span class="t-ai">AI:</span>
+已载入环境记忆：web1 为 nginx 入口层，web2 为应用节点。
+先看本机 CPU、IO 与 TCP 状态，再连 web1 分析慢请求与连接复用。
+
+<span class="t-cmd">查询命令:</span>
+1/2. 采集本机 CPU、IO 与 TCP 状态
+[local] $ vmstat 1 3 &amp;&amp; iostat -xz 1 2 | tail -20
+
+是否执行此命令?
+<span class="t-opt">&gt; [x] 执行
+  [ ] 跳过此命令
+  [ ] 拒绝全部，由我补充说明</span>
+
+<span class="t-cmd">查询命令:</span>
+2/2. 分析 web1 慢请求与 TIME_WAIT 连接
+[web1] $ awk '$NF&gt;1{print $7,$NF}' /var/log/nginx/access.log | sort -k2 -nr | head -10
+
+是否执行此命令?
+<span class="t-opt">&gt; [x] 执行
+  [ ] 跳过此命令
+  [ ] 拒绝全部，由我补充说明</span></pre>
+            </div>
+            <figcaption class="terminal-caption" data-i18n="hero.caption">自然语言 → 诊断 → 确认 → 执行 → 连续分析</figcaption>
+          </figure>
+        </div>
+      </div>
+    </section>
+
+    <section class="section section-alt" id="features">
+      <div class="container">
+        <header class="section-head reveal" data-reveal>
+          <span class="section-index">[ 02 ]</span>
+          <h2 class="section-title" data-i18n="features.title">核心特性</h2>
+          <p class="section-sub" data-i18n="features.sub">为服务器运维与云原生运维原生打造。有 Shell 的地方，就能拥有 AI。</p>
+        </header>
+
+        <div class="spec-grid">
+          <article class="spec reveal" data-reveal>
+            <span class="spec-num">01</span>
+            <h3 class="spec-title" data-i18n="feature.1.title">自然语言交互</h3>
+            <p class="spec-text" data-i18n="feature.1.text">用人话提问，AI 给出专业诊断与最合适的 Shell 命令。</p>
+            <span class="spec-tag">NATURAL LANGUAGE</span>
+          </article>
+          <article class="spec reveal" data-reveal>
+            <span class="spec-num">02</span>
+            <h3 class="spec-title" data-i18n="feature.2.title">连续对话分析</h3>
+            <p class="spec-text" data-i18n="feature.2.text">自动传递上一条命令的输出，支持递归诊断，层层深入。</p>
+            <span class="spec-tag">CONTEXT</span>
+          </article>
+          <article class="spec reveal" data-reveal>
+            <span class="spec-num">03</span>
+            <h3 class="spec-title" data-i18n="feature.3.title">操作审计日志</h3>
+            <p class="spec-text" data-i18n="feature.3.text">谁在何时操作了哪台服务器、执行了什么命令、修改了哪些文件及结果，全程记录在审计日志中。</p>
+            <span class="spec-tag">AUDIT LOG</span>
+          </article>
+          <article class="spec reveal" data-reveal>
+            <span class="spec-num">04</span>
+            <h3 class="spec-title" data-i18n="feature.4.title">管道模式</h3>
+            <p class="spec-text" data-i18n="feature.4.text">直接分析日志输出，单次可处理约 13,000 行数据并生成报告。</p>
+            <span class="spec-tag">PIPE</span>
+          </article>
+          <article class="spec reveal" data-reveal>
+            <span class="spec-num">05</span>
+            <h3 class="spec-title" data-i18n="feature.5.title">多模型支持</h3>
+            <p class="spec-text" data-i18n="feature.5.text">兼容所有 OpenAI 接口，当前模型不可用时自动切换。</p>
+            <span class="spec-tag">FAILOVER</span>
+          </article>
+          <article class="spec reveal" data-reveal>
+            <span class="spec-num">06</span>
+            <h3 class="spec-title" data-i18n="feature.6.title">安全可控</h3>
+            <p class="spec-text" data-i18n="feature.6.text">查询命令与修改命令差异化展示，修改命令二次确认。</p>
+            <span class="spec-tag">GUARDRAIL</span>
+          </article>
+          <article class="spec reveal" data-reveal>
+            <span class="spec-num">07</span>
+            <h3 class="spec-title" data-i18n="feature.7.title">命令黑名单</h3>
+            <p class="spec-text" data-i18n="feature.7.text">提示层 + 执行拦截层双重防护，敏感命令无法执行。</p>
+            <span class="spec-tag">DENYLIST</span>
+          </article>
+          <article class="spec reveal" data-reveal>
+            <span class="spec-num">08</span>
+            <h3 class="spec-title" data-i18n="feature.8.title">私有化部署</h3>
+            <p class="spec-text" data-i18n="feature.8.text">部署到单位或部门自有服务器与内网，数据不出内网。</p>
+            <span class="spec-tag">SELF-HOSTED</span>
+          </article>
+          <article class="spec reveal" data-reveal>
+            <span class="spec-num">09</span>
+            <h3 class="spec-title" data-i18n="feature.9.title">专属模型配置</h3>
+            <p class="spec-text" data-i18n="feature.9.text">接入公有云模型或自建模型服务，模型与额度按组织配置。</p>
+            <span class="spec-tag">MODEL CONFIG</span>
+          </article>
+        </div>
+
+        <div class="panel panel-memory reveal" data-reveal>
+          <div class="panel-head">
+            <span class="panel-kicker">MEMORY</span>
+            <h3 class="panel-title" data-i18n="memory.title">环境记忆 · 越用越懂你的基础设施</h3>
+          </div>
+          <p class="panel-text" data-i18n="memory.text">持续使用后，aist 会逐步记住你的环境信息。下一次排查，不必再交代服务器环境、集群拓扑与节点角色，它会带着对环境的理解直接进入分析。</p>
+          <ul class="memory-tags">
+            <li data-i18n="memory.tag.topology">服务器与集群拓扑</li>
+            <li data-i18n="memory.tag.roles">节点角色与职责</li>
+            <li data-i18n="memory.tag.ports">常用服务与端口</li>
+            <li data-i18n="memory.tag.deploy">部署方式与路径</li>
+            <li data-i18n="memory.tag.incidents">历史故障与处置经验</li>
+          </ul>
+        </div>
+
+        <div class="panel panel-footprint reveal" data-reveal>
+          <div class="panel-head">
+            <span class="panel-kicker">FOOTPRINT</span>
+            <h3 class="panel-title" data-i18n="footprint.title">极致轻量 · 秒级集成</h3>
+          </div>
+          <p class="panel-text" data-i18n="footprint.text">编译为单个原生二进制，无需 Node.js、Java 等运行时环境。只要是有 Shell 的环境或设备，拷贝即用。</p>
+          <div class="weight-compare">
+            <div class="weight-row">
+              <span class="weight-name">aist</span>
+              <span class="weight-bar"><span class="weight-fill weight-fill-aist"></span></span>
+              <span class="weight-size" data-i18n="footprint.aist.size">约 10 MB</span>
+            </div>
+            <div class="weight-row">
+              <span class="weight-name">Codex</span>
+              <span class="weight-bar"><span class="weight-fill weight-fill-codex"></span></span>
+              <span class="weight-size" data-i18n="footprint.codex.size">约 80 MB</span>
+            </div>
+            <div class="weight-row">
+              <span class="weight-name">Claude Code</span>
+              <span class="weight-bar"><span class="weight-fill weight-fill-claude"></span></span>
+              <span class="weight-size" data-i18n="footprint.claude.size">约 250 MB</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="why">
+      <div class="container">
+        <header class="section-head reveal" data-reveal>
+          <span class="section-index">[ 03 ]</span>
+          <h2 class="section-title" data-i18n="why.title">首个 On-Call 运维智能体</h2>
+          <p class="section-sub" data-i18n="why.sub">不是浏览器里的聊天窗口，而是常驻服务器、就在终端控制台里的运维 Agent。</p>
+        </header>
+
+        <div class="diff-grid">
+          <article class="diff reveal" data-reveal>
+            <span class="diff-num">A</span>
+            <h3 class="diff-title" data-i18n="why.a.title">从查文档到直接诊断</h3>
+            <p class="diff-text" data-i18n="why.a.text">不再需要在搜索引擎、文档和终端之间来回切换，AI 直接理解现场并给出可执行的排查路径。</p>
+          </article>
+          <article class="diff reveal" data-reveal>
+            <span class="diff-num">B</span>
+            <h3 class="diff-title" data-i18n="why.b.title">从人工串联到连续推理</h3>
+            <p class="diff-text" data-i18n="why.b.text">每一步命令的输出都会进入下一轮判断，像一位经验丰富的工程师一样层层深入，而不是一问一答。</p>
+          </article>
+          <article class="diff reveal" data-reveal>
+            <span class="diff-num">C</span>
+            <h3 class="diff-title" data-i18n="why.c.title">从浏览器到终端</h3>
+            <p class="diff-text" data-i18n="why.c.text">不需要打开网页或额外的软件平台，Agent 常驻服务器与终端控制台，在真实运维现场就地待命。</p>
+          </article>
+        </div>
+
+        <p class="section-note reveal" data-reveal data-i18n="why.note">这是一种全新的运维交互模式：把自然语言、现场执行与环境记忆连成闭环，让 AI 就在你的控制台里随时待命。</p>
+      </div>
+    </section>
+
+    <section class="section section-alt" id="quickstart">
+      <div class="container">
+        <header class="section-head reveal" data-reveal>
+          <span class="section-index">[ 04 ]</span>
+          <h2 class="section-title" data-i18n="quickstart.title">快速开始</h2>
+          <p class="section-sub" data-i18n="quickstart.sub">一键安装 · 下载即用 · 仅约 10 MB</p>
+        </header>
+
+        <div class="code-block code-block-primary reveal" data-reveal>
+          <div class="code-head">
+            <span class="code-title">aist — install · curl</span>
+            <button class="copy-btn" data-copy data-i18n="copy.label">复制</button>
+          </div>
+          <pre><code id="install-command">curl -fL -# __AIST_SERVER_URL__/run.sh | sh</code></pre>
+        </div>
+
+        <div class="code-block code-block-primary reveal" data-reveal>
+          <div class="code-head">
+            <span class="code-title">aist — install · wget</span>
+            <button class="copy-btn" data-copy data-i18n="copy.label">复制</button>
+          </div>
+          <pre><code id="install-command-wget">wget -qO- __AIST_SERVER_URL__/run.sh | sh</code></pre>
+        </div>
+
+        <p class="install-note reveal" data-reveal><span data-i18n="quickstart.note.lead">脚本会自动识别 OS / 架构并完成安装或升级；首次运行会引导登录，没有账号可先</span><a href="register" data-i18n="quickstart.register">注册账号</a><span data-i18n="quickstart.note.mid">，如</span><a href="register#reset" data-i18n="quickstart.forgot">忘记密码</a><span data-i18n="quickstart.note.tail">可在线重置。</span></p>
+        <p class="platform-line reveal" data-reveal data-i18n="quickstart.platform">// 支持 linux-x86_64 · linux-arm64 · linux-armv6/v7 · linux-i386 · linux-riscv64 · darwin-x86_64 · darwin-arm64</p>
+      </div>
+    </section>
+
+    <section class="section" id="usage">
+      <div class="container">
+        <header class="section-head reveal" data-reveal>
+          <span class="section-index">[ 05 ]</span>
+          <h2 class="section-title" data-i18n="usage.title">使用方式</h2>
+          <p class="section-sub" data-i18n="usage.sub">三种模式覆盖日常运维场景。</p>
+        </header>
+
+        <div class="tabs reveal" data-tabs data-reveal>
+          <div class="tab-list" role="tablist" aria-label="使用方式" data-i18n-aria-label="usage.tabs.aria">
+            <button class="tab is-active" type="button" role="tab" id="tab-interactive" data-tab="interactive" aria-selected="true" aria-controls="panel-interactive" tabindex="0" data-i18n="usage.tab.interactive">交互式</button>
+            <button class="tab" type="button" role="tab" id="tab-single" data-tab="single" aria-selected="false" aria-controls="panel-single" tabindex="-1" data-i18n="usage.tab.single">单次问答</button>
+            <button class="tab" type="button" role="tab" id="tab-pipe" data-tab="pipe" aria-selected="false" aria-controls="panel-pipe" tabindex="-1" data-i18n="usage.tab.pipe">管道分析</button>
+          </div>
+          <div class="tab-panel" role="tabpanel" id="panel-interactive" data-panel="interactive" aria-labelledby="tab-interactive">
+            <pre class="tab-cmd"><code>$ aist</code></pre>
+            <p class="tab-desc" data-i18n="usage.interactive.desc">进入连续对话，AI 会结合上一轮的命令输出继续分析。</p>
+          </div>
+          <div class="tab-panel" role="tabpanel" id="panel-single" data-panel="single" aria-labelledby="tab-single" hidden>
+            <pre class="tab-cmd"><code data-i18n="usage.single.cmd">$ aist "服务器负载很高，帮我排查原因"</code></pre>
+            <p class="tab-desc" data-i18n="usage.single.desc">一次提问即得到诊断建议，执行建议命令并完成本轮分析后退出。</p>
+          </div>
+          <div class="tab-panel" role="tabpanel" id="panel-pipe" data-panel="pipe" aria-labelledby="tab-pipe" hidden>
+            <pre class="tab-cmd"><code data-i18n="usage.pipe.cmd">$ tail -n 200 /var/log/nginx/access.log | aist "分析日志"</code></pre>
+            <p class="tab-desc" data-i18n="usage.pipe.desc">管道模式是只读的：只输出分析结果，不执行任何命令。</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section section-alt" id="security">
+      <div class="container">
+        <header class="section-head reveal" data-reveal>
+          <span class="section-index">[ 06 ]</span>
+          <h2 class="section-title" data-i18n="security.title">安全设计</h2>
+          <p class="section-sub" data-i18n="security.sub">事前拦截、事中确认、事后可审计——每一步都在你的掌控之中。</p>
+        </header>
+
+        <ol class="flow reveal" data-reveal>
+          <li class="flow-step"><span class="flow-num">01</span><span class="flow-label" data-i18n="security.flow.1">生成命令</span></li>
+          <li class="flow-step"><span class="flow-num">02</span><span class="flow-label" data-i18n="security.flow.2">黑名单提示</span></li>
+          <li class="flow-step"><span class="flow-num">03</span><span class="flow-label" data-i18n="security.flow.3">执行前拦截</span></li>
+          <li class="flow-step"><span class="flow-num">04</span><span class="flow-label" data-i18n="security.flow.4">分级确认</span></li>
+          <li class="flow-step"><span class="flow-num">05</span><span class="flow-label" data-i18n="security.flow.5">执行命令</span></li>
+          <li class="flow-step"><span class="flow-num">06</span><span class="flow-label" data-i18n="security.flow.6">审计留痕</span></li>
+        </ol>
+
+        <div class="table-wrap reveal" data-reveal>
+          <table>
+            <thead>
+              <tr>
+                <th data-i18n="security.table.type">类型</th>
+                <th data-i18n="security.table.label">显示标签</th>
+                <th data-i18n="security.table.color">颜色</th>
+                <th data-i18n="security.table.confirm">确认次数</th>
+                <th data-i18n="security.table.example">示例</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td data-i18n="security.table.query">查询命令</td>
+                <td><code data-i18n="security.table.query.label">查询命令:</code></td>
+                <td><span class="tag tag-query" data-i18n="security.table.color.gold">金色</span></td>
+                <td data-i18n="security.table.confirm.once">1 次</td>
+                <td><code>ps aux</code>, <code>docker ps</code></td>
+              </tr>
+              <tr>
+                <td data-i18n="security.table.modify">修改命令</td>
+                <td><code data-i18n="security.table.modify.label">修改命令:</code></td>
+                <td><span class="tag tag-modify" data-i18n="security.table.color.red">红色</span></td>
+                <td data-i18n="security.table.confirm.twice">2 次</td>
+                <td><code>systemctl restart</code>, <code>rm -rf</code></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 class="subhead" data-i18n="security.blacklist.title">命令黑名单</h3>
+        <p class="subhead-sub"><span data-i18n="security.blacklist.sub.prefix">黑名单会注入提示词，且命中命令在执行前直接拦截、不进入确认流程；尾部</span> <code>*</code> <span data-i18n="security.blacklist.sub.middle">匹配至少一个参数，无</span> <code>*</code> <span data-i18n="security.blacklist.sub.suffix">时按前缀词匹配。</span></p>
+        <div class="code-block reveal" data-reveal>
+          <div class="code-head">
+            <span class="code-title">blacklist — config.yaml</span>
+            <button class="copy-btn" data-copy data-i18n="copy.label">复制</button>
+          </div>
+          <pre><code data-i18n="security.blacklist.code">blacklist:
+  - "rm *"               # 禁止带参数的 rm
+  - "dd *"               # 禁止 dd
+  - "kubectl delete *"   # 禁止 kubectl delete
+  - "shutdown"           # 禁止 shutdown
+  - "reboot"             # 禁止 reboot</code></pre>
+        </div>
+
+        <h3 class="subhead" data-i18n="security.audit.title">操作审计日志</h3>
+        <p class="subhead-sub" data-i18n="security.audit.sub">谁（账号、来源 IP）在何时对哪台目标服务器执行了什么命令（查询还是变更）、修改了哪个文件，人工确认、跳过还是拒绝，以及退出码与输出，全部记录在服务端审计日志中，可在管理后台按用户、主机、命令检索，满足事后复盘与合规审计。</p>
+        <div class="code-block reveal" data-reveal>
+          <div class="code-head">
+            <span class="code-title">audit.log — sample</span>
+          </div>
+          <div class="log-body">
+            <code class="log-line">14:22:08 user=zhangsan ip=203.0.113.7  tool=shell_execute target=web1 type=query  status=success  exit=0 cmd="df -h /var"</code>
+            <code class="log-line">14:23:41 user=zhangsan ip=203.0.113.7  tool=file_edit     target=web1 status=success  path=/etc/nginx/conf.d/app.conf sudo=true</code>
+            <code class="log-line">14:23:58 user=zhangsan ip=203.0.113.7  tool=shell_execute target=web1 type=modify status=success  exit=0 cmd="systemctl reload nginx"</code>
+            <code class="log-line">14:25:03 user=lisi     ip=198.51.100.4 tool=shell_execute target=db1  type=modify status=rejected cmd="rm -rf /tmp/staging_dump"</code>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="models">
+      <div class="container">
+        <header class="section-head reveal" data-reveal>
+          <span class="section-index">[ 07 ]</span>
+          <h2 class="section-title" data-i18n="models.title">支持的模型提供商</h2>
+          <p class="section-sub" data-i18n="models.sub">兼容所有 OpenAI 接口。</p>
+        </header>
+
+        <div class="ticker reveal" data-reveal aria-label="支持的模型提供商" data-i18n-aria-label="models.ticker">
+          <div class="ticker-track">
+            <span class="ticker-item" data-i18n="models.qwen">通义千问 Qwen</span>
+            <span class="ticker-item" data-i18n="models.gpt">OpenAI GPT</span>
+            <span class="ticker-item" data-i18n="models.deepseek">DeepSeek</span>
+            <span class="ticker-item" data-i18n="models.kimi">Moonshot Kimi</span>
+            <span class="ticker-item" data-i18n="models.glm">智谱 GLM</span>
+            <span class="ticker-item" data-i18n="models.compatible">OpenAI-Compatible</span>
+            <span class="ticker-item" aria-hidden="true" data-i18n="models.qwen">通义千问 Qwen</span>
+            <span class="ticker-item" aria-hidden="true" data-i18n="models.gpt">OpenAI GPT</span>
+            <span class="ticker-item" aria-hidden="true" data-i18n="models.deepseek">DeepSeek</span>
+            <span class="ticker-item" aria-hidden="true" data-i18n="models.kimi">Moonshot Kimi</span>
+            <span class="ticker-item" aria-hidden="true" data-i18n="models.glm">智谱 GLM</span>
+            <span class="ticker-item" aria-hidden="true" data-i18n="models.compatible">OpenAI-Compatible</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="contact-band" id="contact" role="region" aria-labelledby="contact-title" data-contact-only hidden>
+      <div class="container">
+        <div class="contact-frame reveal" data-reveal>
+          <div class="contact-bar">
+            <span data-i18n="contact.bar.left">[ ENTERPRISE · 商务洽谈 ]</span>
+            <span class="visual-status"><i class="status-dot"></i> <span data-i18n="contact.bar.right">专属顾问响应</span></span>
+          </div>
+
+          <div class="contact-body">
+            <div class="contact-intro">
+              <h2 class="contact-title" id="contact-title">
+                <span data-i18n="contact.title.line1">定制专属方案，</span><br />
+                <span class="accent" data-i18n="contact.title.line2">让智能体常驻内网</span>
+              </h2>
+              <p class="contact-lead" data-i18n="contact.lead">为企业、团队与部门提供私有化部署与长期服务。欢迎沟通基础设施规模与场景需求，获取方案评估、部署调试与专属报价。</p>
+
+              <ul class="contact-pillars">
+                <li>
+                  <span class="pillar-value" data-i18n="contact.pillar.1.val">私有化</span>
+                  <span class="pillar-label" data-i18n="contact.pillar.1.label">数据不出内网</span>
+                </li>
+                <li>
+                  <span class="pillar-value" data-i18n="contact.pillar.2.val">长期账号</span>
+                  <span class="pillar-label" data-i18n="contact.pillar.2.label">组织统一管理</span>
+                </li>
+                <li>
+                  <span class="pillar-value" data-i18n="contact.pillar.3.val">任意模型</span>
+                  <span class="pillar-label" data-i18n="contact.pillar.3.label">兼容 OpenAI 接口</span>
+                </li>
+                <li>
+                  <span class="pillar-value" data-i18n="contact.pillar.4.val">1v1</span>
+                  <span class="pillar-label" data-i18n="contact.pillar.4.label">全程专属支持</span>
+                </li>
+              </ul>
+            </div>
+
+            <div class="channel-card">
+              <div class="channel-chat-part" data-chat-ready hidden>
+                <div class="channel-top">
+                  <span class="channel-badge"><i class="status-dot"></i> <span data-i18n="contact.chat.badge">LIVE CHAT · 在线</span></span>
+                </div>
+                <h3 class="channel-title" data-i18n="contact.chat.title">在线客服实时沟通</h3>
+                <p class="channel-desc" data-i18n="contact.chat.desc">即时发起对话，快速咨询部署方式、模型适配与授权报价。</p>
+                <button class="btn btn-primary channel-btn" type="button" data-chat-open data-i18n="contact.chat.btn">唤起在线客服</button>
+              </div>
+
+              <div class="channel-email-part">
+                <div class="channel-top">
+                  <span class="channel-kicker" data-i18n="contact.email.badge">DIRECT EMAIL</span>
+                  <button class="copy-btn" type="button" data-copy data-copy-text="contact@aistrun.cc" data-i18n="copy.label">复制</button>
+                </div>
+                <a class="channel-email" href="mailto:contact@aistrun.cc">contact@aistrun.cc</a>
+                <a class="btn btn-primary channel-btn channel-email-cta" href="mailto:contact@aistrun.cc" data-i18n="contact.email.btn">发送商务邮件</a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container footer-inner">
+      <div class="footer-brand">
+        <img src="logo.svg" alt="" width="28" height="28" />
+        <div class="footer-brand-text">
+          <strong>AIST</strong>
+          <p data-i18n="footer.tagline">AI Shell assistanT · 首个 On-Call 运维智能体</p>
+        </div>
+      </div>
+      <div class="footer-links">
+        <a href="#quickstart" data-i18n="footer.quickstart">快速开始</a>
+        <a href="#security" data-i18n="footer.security">安全设计</a>
+        <a href="https://docs.aistrun.cc/zh/" target="_blank" rel="noopener noreferrer" data-i18n="footer.docs" data-i18n-href="docs.href">文档</a>
+        <a href="#contact" data-i18n="footer.contact" data-contact-only hidden>商务洽谈</a>
+      </div>
+    </div>
+    <div class="container copyright">
+      <p>© 2026 AIST · <span class="site-version">__AIST_BUILD_VERSION__</span> · <span class="status-inline"><i class="status-dot"></i> <span data-i18n="footer.operational">运行中</span></span></p>
+    </div>
+  </footer>
+
+  <script src="js/i18n.js?v=__AIST_ASSET_VERSION__"></script>
+  <script src="js/main.js?v=__AIST_ASSET_VERSION__"></script>
+  <script src="js/terminal.js?v=__AIST_ASSET_VERSION__"></script>
+  <script src="js/chat.js?v=__AIST_ASSET_VERSION__"></script>
+</body>
+</html>

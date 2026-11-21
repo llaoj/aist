@@ -1,0 +1,11 @@
+.git
+.github
+dist
+build
+pb_data
+cmd/server/pb_data
+.env
+.env.local
+deploy/server/data
+docs
+.DS_Store
