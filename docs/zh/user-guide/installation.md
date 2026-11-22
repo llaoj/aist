@@ -6,6 +6,7 @@
 
 - **Linux**：`amd64`、`arm64`、`arm`（`GOARM=6`，兼容 ARMv6/v7）、`386`、`riscv64`
 - **macOS**：`arm64`（Apple Silicon）、`amd64`（Intel）
+- **Windows**：当前推荐在 **WSL2** 中直接安装运行 Linux 版本（原生客户端规划见 [Roadmap #6](https://github.com/llaoj/aist/issues/6)）
 
 ## 使用 `run.sh` 安装与自动升级
 

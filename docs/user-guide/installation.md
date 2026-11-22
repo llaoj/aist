@@ -6,6 +6,7 @@ The `aist` client is distributed as a static zero-dependency binary (`CGO_ENABLE
 
 - **Linux**: `amd64`, `arm64`, `arm` (`GOARM=6`, compatible with ARMv6/v7), `386`, `riscv64`
 - **macOS**: `arm64` (Apple Silicon), `amd64` (Intel)
+- **Windows**: currently supported via **WSL2** using the Linux binary (native client tracked in [Roadmap #6](https://github.com/llaoj/aist/issues/6))
 
 ## Install & Upgrade via `run.sh`
 
