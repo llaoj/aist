@@ -239,6 +239,54 @@ func TestTokenExpiry(t *testing.T) {
 	}
 }
 
+func TestAccountUsageOKAndNotFound(t *testing.T) {
+	var gotAuth string
+	return404 := false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != accountUsagePath || r.Method != http.MethodGet {
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+		}
+		gotAuth = r.Header.Get("Authorization")
+		if return404 {
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"message":"Not Found."}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{
+			"week_start": "2026-11-16",
+			"reset_at": "2026-11-23T00:00:00Z",
+			"requests": 12,
+			"prompt_tokens": 30000,
+			"completion_tokens": 12180,
+			"used_tokens": 42180,
+			"weekly_token_quota": 500000,
+			"remaining_tokens": 457820
+		}`))
+	}))
+	defer srv.Close()
+
+	client := NewClient(ClientOptions{ServerURL: srv.URL, HTTPClient: srv.Client()})
+	usage, err := client.AccountUsage(context.Background(), "token-xyz")
+	if err != nil {
+		t.Fatalf("AccountUsage: %v", err)
+	}
+	if gotAuth != "Bearer token-xyz" {
+		t.Fatalf("Authorization = %q", gotAuth)
+	}
+	if usage.UsedTokens != 42180 || usage.WeeklyTokenQuota != 500000 || usage.RemainingTokens == nil || *usage.RemainingTokens != 457820 || usage.Requests != 12 {
+		t.Fatalf("usage = %+v", usage)
+	}
+	if wantReset := time.Date(2026, 11, 23, 0, 0, 0, 0, time.UTC); !usage.ResetAt.Equal(wantReset) {
+		t.Fatalf("ResetAt = %v, want %v", usage.ResetAt, wantReset)
+	}
+
+	return404 = true
+	_, err = client.AccountUsage(context.Background(), "token-xyz")
+	if !IsNotFound(err) {
+		t.Fatalf("expected IsNotFound, got %v", err)
+	}
+}
+
 func testJWT(exp int64) string {
 	payload := base64.RawURLEncoding.EncodeToString([]byte(fmt.Sprintf(`{"exp":%d}`, exp)))
 	return "header." + payload + ".signature"

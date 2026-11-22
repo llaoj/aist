@@ -9,11 +9,12 @@ import (
 
 	"github.com/llaoj/aist/internal/i18n"
 	"github.com/llaoj/aist/internal/llm"
+	"github.com/llaoj/aist/internal/util"
 )
 
 func TestRenderErrorMessageLocalized(t *testing.T) {
 	retryAt := time.Date(2026, 11, 23, 0, 0, 0, 0, time.UTC)
-	localExpected := retryAt.Local().Format(localRetryTimeLayout)
+	localExpected := util.FormatLocalMinute(retryAt)
 
 	tests := []struct {
 		name      string

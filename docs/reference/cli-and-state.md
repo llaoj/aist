@@ -10,7 +10,7 @@
 | `aist sessions` | Yes | List recent local sessions and resume the selected conversation |
 | `aist login [server] [-e email]` | No | Authenticate against `[server]` and store credentials in `~/.aist/token.json` |
 | `aist logout` | No | Remove `~/.aist/token.json` (preserves `preferences.json`, `sessions/`, `memory/`, and `fileedit/`) |
-| `aist whoami` | No | Display stored login email and server URL locally |
+| `aist whoami` | No | Display stored login email, server URL, and weekly token usage/quota (gracefully degrades when offline) |
 | `aist lang [zh\|en]` | No | Show or switch local display and AI reply language (`~/.aist/preferences.json`) |
 | `aist version` | No | Print version, commit hash, and build date (does not touch `~/.aist`) |
 | `aist completion <shell>` | No | Generate shell completion scripts (`bash`, `zsh`, `fish`, `powershell`) |

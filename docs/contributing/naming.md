@@ -30,7 +30,7 @@ AIST does **not** keep legacy naming aliases for internal backward compatibility
 | Logical model client | `llm.ServerModel` | Sole client model entry (`model="auto"`) | `llm.Manager`, `CloudModel` |
 | Terminal renderer | `Renderer` | Terminal rendering port | `Display` as a port/verb |
 
-Terminology boundary: `user` refers strictly to login identity (`users`, `user_id`, `email`); `account` refers to the configuration + credentials aggregate (`AccountProvider`, `remote.AccountConfig`, `config.Settings`).
+Terminology boundary: `user` refers strictly to login identity (`users`, `user_id`, `email`); `account` refers to the configuration, credentials, and quota/usage aggregate (`AccountProvider`, `remote.AccountConfig`, `remote.AccountUsage`, `config.Settings`).
 
 ## 2. Go Naming Rules
 

@@ -68,6 +68,17 @@ var ChineseMessages = map[string]string{
 	"login.quick_start_question":    `  aist "你的问题"       # 直接提问一次`,
 	"login.quick_start_lang":        "  aist lang en          # 切换为英文",
 
+	// Whoami messages
+	"whoami.email":             "邮箱:     %s",
+	"whoami.server":            "服务端:   %s",
+	"whoami.status_logged_in":  "状态:     已登录",
+	"whoami.status_expired":    "状态:     登录已失效（请运行 aist login 重新登录）",
+	"whoami.usage_quota":       "本周用量: %s / %s tokens（剩余 %s，共 %d 次调用）",
+	"whoami.usage_unlimited":   "本周用量: %s tokens（不限额度，共 %d 次调用）",
+	"whoami.reset_at":          "重置时间: %s",
+	"whoami.usage_unavailable": "本周用量: 无法获取实时用量（离线或服务端暂不可达）",
+	"whoami.usage_unsupported": "本周用量: 当前服务端版本暂不支持",
+
 	// Language preference messages
 	"lang.switched": "已切换为简体中文 (zh)",
 

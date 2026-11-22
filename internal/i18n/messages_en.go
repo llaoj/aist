@@ -68,6 +68,17 @@ var EnglishMessages = map[string]string{
 	"login.quick_start_question":    `  aist "your question"  # ask a single question`,
 	"login.quick_start_lang":        "  aist lang zh          # switch to Chinese",
 
+	// Whoami messages
+	"whoami.email":             "Email:        %s",
+	"whoami.server":            "Server:       %s",
+	"whoami.status_logged_in":  "Status:       logged in",
+	"whoami.status_expired":    `Status:       login expired (run "aist login" to sign in again)`,
+	"whoami.usage_quota":       "Weekly usage: %s / %s tokens (%s remaining, %d requests)",
+	"whoami.usage_unlimited":   "Weekly usage: %s tokens (unlimited, %d requests)",
+	"whoami.reset_at":          "Resets at:    %s",
+	"whoami.usage_unavailable": "Weekly usage: unavailable (offline or server unreachable)",
+	"whoami.usage_unsupported": "Weekly usage: unsupported by this server version",
+
 	// Language preference messages
 	"lang.switched": "Language switched to English (en)",
 

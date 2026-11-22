@@ -31,7 +31,7 @@
 | 终端渲染器 | `Renderer` | 终端展示端口 | `Display` 表示端口 |
 | 终端打印 | `PrintX` | 直接写 stdout | `DisplayX` |
 
-术语分工：`user` 只表示登录身份（PocketBase `users`、`user_id`、`email`）；`account` 表示该身份的配置与凭证聚合（`AccountProvider`、`remote.AccountConfig`、`config.Settings`）。不要用 `ServerConfig` 表示下发给客户端的账号配置，以免与服务端运行时配置 `server.Config` 混淆。
+术语分工：`user` 只表示登录身份（PocketBase `users`、`user_id`、`email`）；`account` 表示该身份的配置、凭证与配额用量聚合（`AccountProvider`、`remote.AccountConfig`、`remote.AccountUsage`、`config.Settings`）。不要用 `ServerConfig` 表示下发给客户端的账号配置，以免与服务端运行时配置 `server.Config` 混淆。
 
 ## 2. Go 命名规则
 

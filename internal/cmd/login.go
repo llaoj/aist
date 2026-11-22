@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"time"
 
+	"github.com/llaoj/aist/internal/auth"
 	"github.com/llaoj/aist/internal/i18n"
 	"github.com/llaoj/aist/internal/remote"
 	"github.com/llaoj/aist/internal/token"
@@ -52,9 +54,9 @@ var logoutCmd = &cobra.Command{
 
 var whoamiCmd = &cobra.Command{
 	Use:   "whoami",
-	Short: "Show the current login",
+	Short: "Show the current login and weekly token usage",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return runWhoami(cmd.Context())
+		return printWhoami(cmd.Context(), cmd.OutOrStdout(), defaultWhoamiTimeout)
 	},
 }
 
@@ -282,7 +284,13 @@ func runLogout(ctx context.Context) error {
 	return nil
 }
 
+const defaultWhoamiTimeout = 3 * time.Second
+
 func runWhoami(ctx context.Context) error {
+	return printWhoami(ctx, os.Stdout, defaultWhoamiTimeout)
+}
+
+func printWhoami(ctx context.Context, out io.Writer, timeout time.Duration) error {
 	store, err := newTokenStore(ctx)
 	if err != nil {
 		return err
@@ -294,14 +302,92 @@ func runWhoami(ctx context.Context) error {
 	if strings.TrimSpace(creds.Token) == "" {
 		return errors.New("not logged in; run `aist login`")
 	}
-	server := creds.ServerURL
-	if server == "" {
-		server = remote.DefaultServerURL
+
+	language := "en"
+	if prefStore, prefErr := newPreferencesStore(ctx); prefErr == nil {
+		if prefs, loadErr := prefStore.LoadOrInit(); loadErr == nil {
+			language = prefs.Language
+		}
 	}
+	translator := i18n.New(language)
+
+	server := util.FirstNonEmpty(creds.ServerURL, remote.DefaultServerURL)
+	usage, usageErr := loadAccountUsage(ctx, store, server, timeout)
+	if refreshedCreds, loadErr := store.Load(); loadErr == nil {
+		creds = refreshedCreds
+	}
+
 	if creds.Email != "" {
-		fmt.Printf("Email:    %s\n", creds.Email)
+		fmt.Fprintln(out, translator.T("whoami.email", creds.Email))
 	}
-	fmt.Printf("Server:   %s\n", server)
-	fmt.Println("Status:   logged in")
+	fmt.Fprintln(out, translator.T("whoami.server", server))
+
+	if errors.Is(usageErr, auth.ErrLoginRequired) || remote.IsUnauthorized(usageErr) {
+		fmt.Fprintln(out, translator.T("whoami.status_expired"))
+		return errors.New("login expired; run `aist login`")
+	}
+
+	fmt.Fprintln(out, translator.T("whoami.status_logged_in"))
+	switch {
+	case usageErr == nil && usage != nil:
+		if usage.WeeklyTokenQuota > 0 {
+			remaining := max(usage.WeeklyTokenQuota-usage.UsedTokens, 0)
+			if usage.RemainingTokens != nil {
+				remaining = max(*usage.RemainingTokens, 0)
+			}
+			fmt.Fprintln(out, translator.T(
+				"whoami.usage_quota",
+				util.FormatThousands(usage.UsedTokens),
+				util.FormatThousands(usage.WeeklyTokenQuota),
+				util.FormatThousands(remaining),
+				usage.Requests,
+			))
+			if !usage.ResetAt.IsZero() {
+				fmt.Fprintln(out, translator.T("whoami.reset_at", util.FormatLocalMinute(usage.ResetAt)))
+			}
+		} else {
+			fmt.Fprintln(out, translator.T(
+				"whoami.usage_unlimited",
+				util.FormatThousands(usage.UsedTokens),
+				usage.Requests,
+			))
+		}
+	case remote.IsNotFound(usageErr):
+		fmt.Fprintln(out, translator.T("whoami.usage_unsupported"))
+	default:
+		fmt.Fprintln(out, translator.T("whoami.usage_unavailable"))
+	}
 	return nil
+}
+
+func loadAccountUsage(ctx context.Context, store *token.Store, serverURL string, timeout time.Duration) (*remote.AccountUsage, error) {
+	if timeout <= 0 {
+		timeout = defaultWhoamiTimeout
+	}
+	usageCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	client := remote.NewClient(remote.ClientOptions{
+		ServerURL: serverURL,
+		Timeout:   timeout,
+	})
+	authMgr := auth.NewManager(auth.ManagerOptions{
+		Store:  store,
+		Client: client,
+	})
+
+	accessToken, err := authMgr.AccessToken(usageCtx)
+	if err != nil {
+		return nil, err
+	}
+	usage, err := client.AccountUsage(usageCtx, accessToken)
+	if err == nil || !remote.IsUnauthorized(err) {
+		return usage, err
+	}
+
+	refreshedToken, refreshErr := authMgr.RefreshAccessToken(usageCtx)
+	if refreshErr != nil {
+		return nil, refreshErr
+	}
+	return client.AccountUsage(usageCtx, refreshedToken)
 }

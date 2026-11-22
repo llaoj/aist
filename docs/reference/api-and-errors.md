@@ -6,6 +6,7 @@
 |---|---|---|---|---|
 | `GET` | `/v1/healthz` | None | `200 {"status":"ok","version":"..."}` | — |
 | `POST` | `/v1/register` | None (`application/json`, rate-limited) | `201 {"email":"...","verified":false,"verification_sent":bool}` | `400`, `415`, `429`, `500` |
+| `GET` | `/v1/account/usage` | `Bearer <auth_token>` | `200 {"week_start":"...","reset_at":"...","requests":int,"prompt_tokens":int,"completion_tokens":int,"used_tokens":int,"weekly_token_quota":int,"remaining_tokens"?:int}` | `401`, `500` |
 | `POST` | `/v1/proxy/chat/completions` | `Bearer <auth_token>` | Upstream `2xx` OpenAI completion JSON | `400`, `401`, `403`, `429`, `502`, `503` |
 | `GET` | `/`, `/register` | None | Embedded landing & registration HTML (`__AIST_SERVER_URL__` injected from `Settings.Meta.AppURL`) | — |
 | `GET` | `/run.sh`, `/uninstall.sh` | None | Bootstrap & uninstall shell scripts | — |

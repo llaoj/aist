@@ -7,7 +7,7 @@
 1. **CLI 前置阶段（`internal/cmd/root.go`）**：
    - 无状态命令（`version`、`help`、`completion`、`__complete`）完全跳过 `~/.aist` 初始化；
    - 其余命令先调用 `state.EnsureRoot("")`（确保目录 `0700`）与 `preferences.Store.LoadOrInit()`（确保 `preferences.json` 存在；`aist lang <zh|en>` 带参写入时跳过前置读取以支持损坏文件自愈）；
-   - 免登录子命令（`login`、`logout`、`whoami`、`lang`）到此直接执行，不触发联网刷新。
+   - 轻量子命令（`login`、`logout`、`whoami`、`lang`）跳过 `app.New` 全量装配（其中 `whoami` 仅在已登录时以短超时查询用量，离线时优雅降级）。
 2. **应用装配（`internal/app/app.go`）**：
    - 读取本地 `preferences.json` 语言偏好，执行 `account.Startup(ctx)`（调用 `auth-refresh` 续期并获取最新 `meta.config`），转换为不可变的 `config.Settings` 快照，一次性装配 `i18n`、`llm.ServerModel`、`memory.Manager`、`prompt.Builder`、`commandguard.Guard`、`fileedit.Editor`、`executor.CommandRouter` 与 `session.Repository`。
 

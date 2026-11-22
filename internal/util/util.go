@@ -7,9 +7,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 )
+
+const localMinuteLayout = "2006-01-02 15:04"
 
 // SHA256Hex returns the lowercase hex SHA-256 digest of data.
 func SHA256Hex(data []byte) string {
@@ -62,4 +66,39 @@ func TruncatePrefix(s string, maxBytes int) string {
 		cut--
 	}
 	return fmt.Sprintf("%s…[truncated %d bytes]", s[:cut], len(s)-cut)
+}
+
+// FormatLocalMinute formats a timestamp in the local timezone to minute precision.
+func FormatLocalMinute(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	return t.Local().Format(localMinuteLayout)
+}
+
+// FormatThousands formats an integer with ASCII comma thousands separators.
+func FormatThousands(n int) string {
+	raw := strconv.Itoa(n)
+	sign := ""
+	if strings.HasPrefix(raw, "-") {
+		sign = "-"
+		raw = raw[1:]
+	}
+	if len(raw) <= 3 {
+		return sign + raw
+	}
+	var b strings.Builder
+	b.Grow(len(sign) + len(raw) + (len(raw)-1)/3)
+	b.WriteString(sign)
+	lead := len(raw) % 3
+	if lead > 0 {
+		b.WriteString(raw[:lead])
+	}
+	for i := lead; i < len(raw); i += 3 {
+		if i > 0 {
+			b.WriteByte(',')
+		}
+		b.WriteString(raw[i : i+3])
+	}
+	return b.String()
 }

@@ -53,3 +53,17 @@ func TestMessagesKeyParity(t *testing.T) {
 		}
 	}
 }
+
+func TestWhoamiUsageMessagesFormatCleanly(t *testing.T) {
+	for _, language := range []string{"en", "zh"} {
+		tr := New(language)
+		quotaMsg := tr.T("whoami.usage_quota", "42,180", "500,000", "457,820", 18)
+		if strings.Contains(quotaMsg, "%!") {
+			t.Fatalf("%s whoami.usage_quota has format mismatch: %q", language, quotaMsg)
+		}
+		unlimitedMsg := tr.T("whoami.usage_unlimited", "42,180", 18)
+		if strings.Contains(unlimitedMsg, "%!") {
+			t.Fatalf("%s whoami.usage_unlimited has format mismatch: %q", language, unlimitedMsg)
+		}
+	}
+}

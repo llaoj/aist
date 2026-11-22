@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -11,7 +12,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/llaoj/aist/internal/preferences"
 	"github.com/llaoj/aist/internal/state"
 	"github.com/llaoj/aist/internal/token"
 )
@@ -69,7 +72,7 @@ func TestWhoamiAndLogoutShareInitializedStateRoot(t *testing.T) {
 	}
 	store := token.NewStore(token.StoreOptions{State: stateRoot})
 	if err := store.Save(token.Credentials{
-		ServerURL: "https://api.example.com",
+		ServerURL: "http://127.0.0.1:1",
 		Token:     "test-jwt",
 		Email:     "alice@example.com",
 	}); err != nil {
@@ -376,4 +379,154 @@ func newTestStateRoot(t *testing.T) *state.Root {
 		t.Fatalf("EnsureRoot: %v", err)
 	}
 	return stateRoot
+}
+
+func TestPrintWhoamiQuotaUnlimitedRefreshAndFallbacks(t *testing.T) {
+	resetAt := time.Date(2026, 11, 23, 0, 0, 0, 0, time.UTC)
+
+	t.Run("quota_chinese_and_refresh_on_401", func(t *testing.T) {
+		usageCalls := 0
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/v1/account/usage":
+				usageCalls++
+				if r.Header.Get("Authorization") == "Bearer stale-token" {
+					w.WriteHeader(http.StatusUnauthorized)
+					return
+				}
+				if r.Header.Get("Authorization") != "Bearer fresh-token" {
+					t.Errorf("unexpected Authorization: %s", r.Header.Get("Authorization"))
+				}
+				_, _ = fmt.Fprintf(w, `{
+					"week_start": "2026-11-16",
+					"reset_at": %q,
+					"requests": 18,
+					"used_tokens": 42180,
+					"weekly_token_quota": 500000,
+					"remaining_tokens": 457820
+				}`, resetAt.Format(time.RFC3339))
+			case "/api/collections/users/auth-refresh":
+				_, _ = w.Write([]byte(`{"token":"fresh-token","record":{"id":"u1","email":"alice@example.com"},"meta":{"config":{"schema_version":1}}}`))
+			default:
+				t.Errorf("unexpected path: %s", r.URL.Path)
+				w.WriteHeader(http.StatusNotFound)
+			}
+		}))
+		defer srv.Close()
+
+		stateRoot := newTestStateRoot(t)
+		ctx := withStateRoot(context.Background(), stateRoot)
+		if err := preferences.NewStore(preferences.StoreOptions{State: stateRoot}).Save(preferences.Data{Language: "zh"}); err != nil {
+			t.Fatalf("Save preferences: %v", err)
+		}
+		store := token.NewStore(token.StoreOptions{State: stateRoot})
+		if err := store.Save(token.Credentials{ServerURL: srv.URL, Token: "stale-token"}); err != nil {
+			t.Fatalf("Save token: %v", err)
+		}
+
+		var buf bytes.Buffer
+		if err := printWhoami(ctx, &buf, time.Second); err != nil {
+			t.Fatalf("printWhoami: %v", err)
+		}
+		out := buf.String()
+		if usageCalls != 2 {
+			t.Fatalf("usageCalls = %d, want 2", usageCalls)
+		}
+		for _, want := range []string{
+			"邮箱:     alice@example.com",
+			"状态:     已登录",
+			"本周用量: 42,180 / 500,000 tokens（剩余 457,820，共 18 次调用）",
+			"重置时间: " + resetAt.Local().Format("2006-01-02 15:04"),
+		} {
+			if !strings.Contains(out, want) {
+				t.Fatalf("output missing %q:\n%s", want, out)
+			}
+		}
+	})
+
+	t.Run("unlimited_english", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(`{
+				"week_start": "2026-11-16",
+				"reset_at": "2026-11-23T00:00:00Z",
+				"requests": 5,
+				"used_tokens": 1200,
+				"weekly_token_quota": 0
+			}`))
+		}))
+		defer srv.Close()
+
+		stateRoot := newTestStateRoot(t)
+		ctx := withStateRoot(context.Background(), stateRoot)
+		if err := preferences.NewStore(preferences.StoreOptions{State: stateRoot}).Save(preferences.Data{Language: "en"}); err != nil {
+			t.Fatalf("Save preferences: %v", err)
+		}
+		store := token.NewStore(token.StoreOptions{State: stateRoot})
+		if err := store.Save(token.Credentials{ServerURL: srv.URL, Token: "valid-token", Email: "bob@example.com"}); err != nil {
+			t.Fatalf("Save token: %v", err)
+		}
+
+		var buf bytes.Buffer
+		if err := printWhoami(ctx, &buf, time.Second); err != nil {
+			t.Fatalf("printWhoami: %v", err)
+		}
+		out := buf.String()
+		if !strings.Contains(out, "Weekly usage: 1,200 tokens (unlimited, 5 requests)") {
+			t.Fatalf("unexpected output:\n%s", out)
+		}
+		if strings.Contains(out, "Resets at:") {
+			t.Fatalf("unlimited output should not show reset time:\n%s", out)
+		}
+	})
+
+	t.Run("unsupported_older_server_404", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusNotFound)
+		}))
+		defer srv.Close()
+
+		stateRoot := newTestStateRoot(t)
+		ctx := withStateRoot(context.Background(), stateRoot)
+		if err := preferences.NewStore(preferences.StoreOptions{State: stateRoot}).Save(preferences.Data{Language: "en"}); err != nil {
+			t.Fatalf("Save preferences: %v", err)
+		}
+		store := token.NewStore(token.StoreOptions{State: stateRoot})
+		if err := store.Save(token.Credentials{ServerURL: srv.URL, Token: "valid-token", Email: "bob@example.com"}); err != nil {
+			t.Fatalf("Save token: %v", err)
+		}
+
+		var buf bytes.Buffer
+		if err := printWhoami(ctx, &buf, time.Second); err != nil {
+			t.Fatalf("printWhoami: %v", err)
+		}
+		if !strings.Contains(buf.String(), "Weekly usage: unsupported by this server version") {
+			t.Fatalf("unexpected output:\n%s", buf.String())
+		}
+	})
+
+	t.Run("revoked_token_returns_login_expired", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusUnauthorized)
+		}))
+		defer srv.Close()
+
+		stateRoot := newTestStateRoot(t)
+		ctx := withStateRoot(context.Background(), stateRoot)
+		if err := preferences.NewStore(preferences.StoreOptions{State: stateRoot}).Save(preferences.Data{Language: "en"}); err != nil {
+			t.Fatalf("Save preferences: %v", err)
+		}
+		store := token.NewStore(token.StoreOptions{State: stateRoot})
+		if err := store.Save(token.Credentials{ServerURL: srv.URL, Token: "revoked-token", Email: "bob@example.com"}); err != nil {
+			t.Fatalf("Save token: %v", err)
+		}
+
+		var buf bytes.Buffer
+		err := printWhoami(ctx, &buf, time.Second)
+		if err == nil || err.Error() != "login expired; run `aist login`" {
+			t.Fatalf("err = %v, want login expired", err)
+		}
+		if !strings.Contains(buf.String(), "login expired") {
+			t.Fatalf("unexpected output:\n%s", buf.String())
+		}
+	})
 }

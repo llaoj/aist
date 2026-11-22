@@ -56,6 +56,7 @@ func (s *API) RegisterRoutes(router *core.ServeEvent) {
 	})
 
 	r.POST("/v1/register", s.handleRegister).Bind(apis.BodyLimit(maxRegisterBodyBytes))
+	r.GET("/v1/account/usage", s.handleAccountUsage).Bind(apis.RequireAuth(usersCollection))
 	r.POST("/v1/proxy/chat/completions", s.handleChatCompletions).Bind(
 		apis.RequireAuth(usersCollection),
 		apis.BodyLimit(maxProxyBodyBytes),

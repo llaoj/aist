@@ -6,6 +6,7 @@
 |---|---|---|---|---|
 | `GET` | `/v1/healthz` | 无 | `200 {"status":"ok","version":"..."}` | — |
 | `POST` | `/v1/register` | 无（要求 `application/json`，带限流） | `201 {"email":"...","verified":false,"verification_sent":bool}` | `400`、`415`、`429`、`500` |
+| `GET` | `/v1/account/usage` | `Bearer <auth_token>` | `200 {"week_start":"...","reset_at":"...","requests":int,"prompt_tokens":int,"completion_tokens":int,"used_tokens":int,"weekly_token_quota":int,"remaining_tokens"?:int}` | `401`、`500` |
 | `POST` | `/v1/proxy/chat/completions` | `Bearer <auth_token>` | 上游 `2xx` OpenAI 兼容响应体 | `400`、`401`、`403`、`429`、`502`、`503` |
 | `GET` | `/`、`/register` | 无 | 内嵌落地页与注册页（动态注入 `Settings.Meta.AppURL`） | — |
 | `GET` | `/run.sh`、`/uninstall.sh` | 无 | 客户端安装升级脚本与卸载脚本 | — |

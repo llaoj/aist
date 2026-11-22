@@ -10,7 +10,7 @@
 | `aist sessions` | 是 | 列出本机历史会话并选择恢复 |
 | `aist login [server] [-e email]` | 否 | 登录指定服务端并将 Token 写入 `~/.aist/token.json` |
 | `aist logout` | 否 | 删除 `~/.aist/token.json`（保留 `preferences.json`、历史会话、Memory 与备份） |
-| `aist whoami` | 否 | 纯本地查看当前登录邮箱与服务端地址 |
+| `aist whoami` | 否 | 查看当前登录邮箱、服务端地址及本周 Token 用量与剩余额度（离线时自动降级展示本地状态） |
 | `aist lang [zh\|en]` | 否 | 查看或切换本地界面与 AI 回复语言（`~/.aist/preferences.json`） |
 | `aist version` | 否 | 输出版本号、Commit 与构建时间（不初始化 `~/.aist`） |
 | `aist completion <shell>` | 否 | 生成 `bash` / `zsh` / `fish` / `powershell` 自动补全脚本 |

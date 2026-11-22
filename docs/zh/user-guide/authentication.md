@@ -51,7 +51,7 @@ aist login -e alice@example.com 127.0.0.1:8090
 ## 查看状态与退出登录
 
 ```bash
-aist whoami   # 纯本地读取当前登录邮箱与服务端地址（不发起联网请求）
+aist whoami   # 查看当前登录邮箱、服务端地址以及本周 Token 用量与剩余额度（离线自动降级）
 aist logout   # 删除本地 ~/.aist/token.json（保留语言偏好 preferences.json、历史会话与环境记忆）
 ```
 

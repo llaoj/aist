@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"net/http"
 	"time"
 
 	"github.com/pocketbase/dbx"
@@ -102,29 +103,99 @@ func currentUTCWeekWindow(now time.Time) (startDate, nextStartDate string, retry
 	return weekStart.Format("2006-01-02"), nextWeekStart.Format("2006-01-02"), nextWeekStart
 }
 
+type weeklyUsage struct {
+	WeekStart        string
+	ResetAt          time.Time
+	Requests         int
+	PromptTokens     int
+	CompletionTokens int
+	TotalTokens      int
+}
+
+type accountUsageResponse struct {
+	WeekStart        string `json:"week_start"`
+	ResetAt          string `json:"reset_at"`
+	Requests         int    `json:"requests"`
+	PromptTokens     int    `json:"prompt_tokens"`
+	CompletionTokens int    `json:"completion_tokens"`
+	UsedTokens       int    `json:"used_tokens"`
+	WeeklyTokenQuota int    `json:"weekly_token_quota"`
+	RemainingTokens  *int   `json:"remaining_tokens,omitempty"`
+}
+
+func queryWeeklyUsage(app core.App, userID string, now time.Time) (weeklyUsage, error) {
+	startDate, nextStartDate, resetAt := currentUTCWeekWindow(now)
+	var row struct {
+		Requests         int `db:"requests"`
+		PromptTokens     int `db:"prompt_tokens"`
+		CompletionTokens int `db:"completion_tokens"`
+		TotalTokens      int `db:"total_tokens"`
+	}
+	err := app.DB().NewQuery(`
+		SELECT
+			COALESCE(SUM(requests), 0) AS requests,
+			COALESCE(SUM(prompt_tokens), 0) AS prompt_tokens,
+			COALESCE(SUM(completion_tokens), 0) AS completion_tokens,
+			COALESCE(SUM(total_tokens), 0) AS total_tokens
+		FROM daily_model_usage
+		WHERE user = {:user}
+		  AND date >= {:startDate}
+		  AND date < {:nextStartDate}
+	`).Bind(dbx.Params{
+		"user":          userID,
+		"startDate":     startDate,
+		"nextStartDate": nextStartDate,
+	}).One(&row)
+	if err != nil {
+		return weeklyUsage{}, err
+	}
+	return weeklyUsage{
+		WeekStart:        startDate,
+		ResetAt:          resetAt,
+		Requests:         max(row.Requests, 0),
+		PromptTokens:     max(row.PromptTokens, 0),
+		CompletionTokens: max(row.CompletionTokens, 0),
+		TotalTokens:      max(row.TotalTokens, 0),
+	}, nil
+}
+
 func checkWeeklyTokenQuota(app core.App, user *core.Record, now time.Time) (exceeded bool, retryAt time.Time, err error) {
 	quota := user.GetInt("weekly_token_quota")
 	if quota <= 0 {
 		return false, time.Time{}, nil
 	}
 
-	startDate, nextStartDate, nextRetry := currentUTCWeekWindow(now)
-	var row struct {
-		Used int `db:"used"`
-	}
-	err = app.DB().NewQuery(`
-		SELECT COALESCE(SUM(total_tokens), 0) AS used
-		FROM daily_model_usage
-		WHERE user = {:user}
-		  AND date >= {:startDate}
-		  AND date < {:nextStartDate}
-	`).Bind(dbx.Params{
-		"user":          user.Id,
-		"startDate":     startDate,
-		"nextStartDate": nextStartDate,
-	}).One(&row)
+	usage, err := queryWeeklyUsage(app, user.Id, now)
 	if err != nil {
 		return false, time.Time{}, err
 	}
-	return row.Used >= quota, nextRetry, nil
+	return usage.TotalTokens >= quota, usage.ResetAt, nil
+}
+
+func (s *API) handleAccountUsage(e *core.RequestEvent) error {
+	if e.Auth == nil {
+		return e.UnauthorizedError("Authentication is required.", nil)
+	}
+
+	usage, err := queryWeeklyUsage(e.App, e.Auth.Id, s.now())
+	if err != nil {
+		e.App.Logger().Warn("failed to query weekly usage", "user", e.Auth.Id, "error", err)
+		return e.InternalServerError("Failed to query account usage.", nil)
+	}
+
+	quota := max(e.Auth.GetInt("weekly_token_quota"), 0)
+	resp := accountUsageResponse{
+		WeekStart:        usage.WeekStart,
+		ResetAt:          usage.ResetAt.UTC().Format(time.RFC3339),
+		Requests:         usage.Requests,
+		PromptTokens:     usage.PromptTokens,
+		CompletionTokens: usage.CompletionTokens,
+		UsedTokens:       usage.TotalTokens,
+		WeeklyTokenQuota: quota,
+	}
+	if quota > 0 {
+		rem := max(quota-usage.TotalTokens, 0)
+		resp.RemainingTokens = &rem
+	}
+	return e.JSON(http.StatusOK, resp)
 }

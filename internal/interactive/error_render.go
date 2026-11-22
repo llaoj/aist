@@ -5,9 +5,8 @@ import (
 
 	"github.com/llaoj/aist/internal/llm"
 	"github.com/llaoj/aist/internal/tools"
+	"github.com/llaoj/aist/internal/util"
 )
-
-const localRetryTimeLayout = "2006-01-02 15:04"
 
 // RenderErrorMessage converts an execution or LLM proxy error into a localized
 // user-facing description without an "Error:" prefix.
@@ -31,13 +30,13 @@ func RenderErrorMessage(translator tools.Translator, err error) string {
 	switch status.ErrorCode {
 	case llm.ErrorCodeQuotaExceeded:
 		if !status.RetryAt.IsZero() {
-			return translator.T("error.quota_exceeded_retry", status.RetryAt.Local().Format(localRetryTimeLayout))
+			return translator.T("error.quota_exceeded_retry", util.FormatLocalMinute(status.RetryAt))
 		}
 		return translator.T("error.quota_exceeded")
 
 	case llm.ErrorCodeNoAvailableModel:
 		if !status.RetryAt.IsZero() {
-			return translator.T("error.no_available_model_retry", status.RetryAt.Local().Format(localRetryTimeLayout))
+			return translator.T("error.no_available_model_retry", util.FormatLocalMinute(status.RetryAt))
 		}
 		return translator.T("error.no_available_model")
 

@@ -7,7 +7,7 @@ This guide summarizes the internal architecture across the client and server pac
 1. **CLI Pre-Run (`internal/cmd/root.go`)**:
    - Stateless commands (`version`, `help`, `completion`, `__complete`) skip `~/.aist` initialization completely.
    - All other commands run `state.EnsureRoot("")` (`0700` dirs) and `preferences.Store.LoadOrInit()` (ensuring `~/.aist/preferences.json` exists with inferred `zh` or `en`; skipped only when `aist lang <zh|en>` is explicitly overwriting it).
-   - Lightweight commands (`login`, `logout`, `whoami`, `lang`) stop before `app.New` so they work offline and without an active login.
+   - Lightweight commands (`login`, `logout`, `whoami`, `lang`) stop before `app.New` (`whoami` queries weekly usage with a short timeout when logged in and degrades cleanly offline).
 2. **Application Wiring (`internal/app/app.go`)**:
    - Ensures `*state.Root`, loads `preferences.Data`, refreshes auth via `account.Startup(ctx)` (`POST /api/collections/users/auth-refresh`), maps `remote.AccountConfig` → `config.Settings`, normalizes/validates, and constructs `i18n`, `llm.ServerModel`, `memory.Manager`, `prompt.Builder`, `commandguard.Guard`, `fileedit.Editor`, `executor.CommandRouter`, and `session.Repository`.
 

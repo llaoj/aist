@@ -284,3 +284,84 @@ func TestWeeklyTokenQuotaEnforcementAndMondayReset(t *testing.T) {
 		t.Fatalf("after Monday UTC reset: status = %d body=%s", w.Code, w.Body.String())
 	}
 }
+
+func TestAccountUsageEndpoint(t *testing.T) {
+	now := time.Date(2026, 11, 19, 10, 0, 0, 0, time.UTC) // Thursday
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"ok"}}],"usage":{"prompt_tokens":40,"completion_tokens":20,"total_tokens":60}}`))
+	}))
+	defer upstream.Close()
+
+	app, srv := setupServerWithOptions(t, APIOptions{Now: func() time.Time { return now }})
+	provider := createProvider(t, app, "deepseek", upstream.URL, "sk-test", true)
+	m1 := createModel(t, app, provider, "m1", 10, 0, 0, true)
+
+	capped := createUser(t, app, "usagecap", "cappedpw123")
+	configureUser(t, app, capped, nil, m1)
+	capped.Set("weekly_token_quota", 100)
+	if err := app.Save(capped); err != nil {
+		t.Fatalf("save capped user: %v", err)
+	}
+
+	unlimited := createUser(t, app, "usageunlim", "unlimpw1234")
+	configureUser(t, app, unlimited, nil, m1)
+
+	h := buildMux(t, app, srv)
+
+	if w := doJSON(t, h, http.MethodGet, "/v1/account/usage", "", ""); w.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated status = %d, want 401", w.Code)
+	}
+
+	cappedLogin := loginWithPassword(t, h, "usagecap@example.com", "cappedpw123")
+	unlimLogin := loginWithPassword(t, h, "usageunlim@example.com", "unlimpw1234")
+	reqBody := `{"model":"auto","messages":[{"role":"user","content":"hi"}]}`
+
+	w := doJSON(t, h, http.MethodGet, "/v1/account/usage", "Bearer "+cappedLogin.Token, "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("initial usage status = %d body=%s", w.Code, w.Body.String())
+	}
+	var got accountUsageResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode initial usage: %v", err)
+	}
+	if got.WeekStart != "2026-11-16" || got.ResetAt != "2026-11-23T00:00:00Z" || got.UsedTokens != 0 || got.Requests != 0 || got.WeeklyTokenQuota != 100 || got.RemainingTokens == nil || *got.RemainingTokens != 100 {
+		t.Fatalf("initial usage = %+v", got)
+	}
+
+	// Non-nil *int(0) ensures capped accounts still expose remaining_tokens: 0 when exhausted.
+	for range 2 {
+		if pw := doJSON(t, h, http.MethodPost, "/v1/proxy/chat/completions", "Bearer "+cappedLogin.Token, reqBody); pw.Code != http.StatusOK {
+			t.Fatalf("proxy status = %d", pw.Code)
+		}
+	}
+	w = doJSON(t, h, http.MethodGet, "/v1/account/usage", "Bearer "+cappedLogin.Token, "")
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode over-quota usage: %v", err)
+	}
+	if got.UsedTokens != 120 || got.PromptTokens != 80 || got.CompletionTokens != 40 || got.Requests != 2 || got.RemainingTokens == nil || *got.RemainingTokens != 0 {
+		t.Fatalf("over-quota usage = %+v body=%s", got, w.Body.String())
+	}
+
+	if pw := doJSON(t, h, http.MethodPost, "/v1/proxy/chat/completions", "Bearer "+unlimLogin.Token, reqBody); pw.Code != http.StatusOK {
+		t.Fatalf("unlimited proxy status = %d", pw.Code)
+	}
+	w = doJSON(t, h, http.MethodGet, "/v1/account/usage", "Bearer "+unlimLogin.Token, "")
+	var unlimGot accountUsageResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &unlimGot); err != nil {
+		t.Fatalf("decode unlimited usage: %v", err)
+	}
+	if unlimGot.UsedTokens != 60 || unlimGot.Requests != 1 || unlimGot.WeeklyTokenQuota != 0 || unlimGot.RemainingTokens != nil {
+		t.Fatalf("unlimited usage = %+v body=%s", unlimGot, w.Body.String())
+	}
+
+	now = time.Date(2026, 11, 23, 0, 0, 0, 0, time.UTC)
+	w = doJSON(t, h, http.MethodGet, "/v1/account/usage", "Bearer "+cappedLogin.Token, "")
+	var resetGot accountUsageResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resetGot); err != nil {
+		t.Fatalf("decode reset usage: %v", err)
+	}
+	if resetGot.WeekStart != "2026-11-23" || resetGot.ResetAt != "2026-11-30T00:00:00Z" || resetGot.UsedTokens != 0 || resetGot.RemainingTokens == nil || *resetGot.RemainingTokens != 100 {
+		t.Fatalf("reset usage = %+v", resetGot)
+	}
+}

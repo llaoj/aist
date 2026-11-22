@@ -30,6 +30,7 @@ const (
 	requestOTPPath       = usersAuthBasePath + "/request-otp"
 	authWithOTPPath      = usersAuthBasePath + "/auth-with-otp"
 	authRefreshPath      = usersAuthBasePath + "/auth-refresh"
+	accountUsagePath     = "/v1/account/usage"
 	proxyPath            = "/v1/proxy"
 )
 
@@ -65,6 +66,15 @@ func IsBadRequest(err error) bool {
 		return false
 	}
 	return apiErr.StatusCode == http.StatusBadRequest
+}
+
+// IsNotFound reports whether err is a 404 Not Found error.
+func IsNotFound(err error) bool {
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) {
+		return false
+	}
+	return apiErr.StatusCode == http.StatusNotFound
 }
 
 // MFARequired returns the MFA challenge id when the server requires a second
@@ -149,6 +159,18 @@ type AuthResponse struct {
 	Record AuthRecord    `json:"record"`
 	Meta   AuthMeta      `json:"meta"`
 	Config AccountConfig `json:"-"`
+}
+
+// AccountUsage describes the current UTC-week token consumption and quota.
+type AccountUsage struct {
+	WeekStart        string    `json:"week_start"`
+	ResetAt          time.Time `json:"reset_at"`
+	Requests         int       `json:"requests"`
+	PromptTokens     int       `json:"prompt_tokens"`
+	CompletionTokens int       `json:"completion_tokens"`
+	UsedTokens       int       `json:"used_tokens"`
+	WeeklyTokenQuota int       `json:"weekly_token_quota"`
+	RemainingTokens  *int      `json:"remaining_tokens,omitempty"`
 }
 
 // ClientOptions configures a Client.
@@ -267,6 +289,22 @@ func (c *Client) Refresh(ctx context.Context, token string) (*AuthResponse, erro
 		return nil, err
 	}
 	return decodeAuthResponse(data)
+}
+
+// AccountUsage fetches the authenticated user's current UTC-week token usage and quota.
+func (c *Client) AccountUsage(ctx context.Context, token string) (*AccountUsage, error) {
+	if strings.TrimSpace(token) == "" {
+		return nil, errors.New("auth token is required")
+	}
+	data, err := c.request(ctx, http.MethodGet, accountUsagePath, nil, token)
+	if err != nil {
+		return nil, err
+	}
+	var out AccountUsage
+	if err := json.Unmarshal(data, &out); err != nil {
+		return nil, fmt.Errorf("failed to parse account usage: %w", err)
+	}
+	return &out, nil
 }
 
 // TokenExpiry returns the exp claim of a JWT-like auth token.

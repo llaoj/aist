@@ -51,7 +51,7 @@ Passwords are always read interactively with echo disabled — there is intentio
 ## Inspecting & Clearing Credentials
 
 ```bash
-aist whoami   # display current email and server URL locally (offline, no network call)
+aist whoami   # display current email, server URL, and weekly token usage/quota (degrades cleanly offline)
 aist logout   # delete ~/.aist/token.json (preserves ~/.aist/preferences.json, sessions, and Memory)
 ```
 
