@@ -1,7 +1,7 @@
 (function () {
   "use strict";
 
-  var TAWK_SRC = "https://embed.tawk.to/6af69b7dccbc863c4b2147d1/1k79kuppd";
+  var TAWK_SRC = "https://embed.tawk.to/6b02383ab8412e3ce43fafbb/1k80an9sg";
   var PUBLIC_HOSTS = ["aistrun.cc", "www.aistrun.cc"];
   var LOCAL_HOSTS = ["localhost", "127.0.0.1", "::1", "[::1]"];
 
