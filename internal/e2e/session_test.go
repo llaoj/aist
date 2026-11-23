@@ -38,7 +38,7 @@ func TestSessionPersistsResumesAndCompacts(t *testing.T) {
 			CompactionEnabled:      true,
 		},
 	})
-	if _, err := service.Create(context.Background(), "system"); err != nil {
+	if _, err := service.Create(context.Background()); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 

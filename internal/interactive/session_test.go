@@ -3,12 +3,15 @@ package interactive
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 	"unicode/utf8"
 
+	"github.com/llaoj/aist/internal/i18n"
 	"github.com/llaoj/aist/internal/llm"
 	"github.com/llaoj/aist/internal/memory"
+	"github.com/llaoj/aist/internal/prompt"
 	sessionpkg "github.com/llaoj/aist/internal/session"
 	"github.com/llaoj/aist/internal/tools"
 )
@@ -284,5 +287,242 @@ func TestHandleUserTurnPreservesFullAssistantContentAndTruncatesUserInput(t *tes
 	}
 	if messages[1].Content != longAssistant {
 		t.Fatalf("assistant message len = %d, want full len %d", len(messages[1].Content), len(longAssistant))
+	}
+}
+
+type interruptInput struct{}
+
+func (interruptInput) ReadInput() (string, error) { return "", ErrInterrupted }
+
+func TestInteractivePipedSessionRunsWithToolsAndDynamicSystemPrompt(t *testing.T) {
+	model := &recordingScriptedModel{
+		responses: []*llm.CompletionResponse{
+			{ToolCalls: []llm.ToolCall{{
+				ID:   "call-mem",
+				Type: "function",
+				Function: llm.FunctionCall{
+					Name:      tools.ToolMemorySearch,
+					Arguments: `{"query":"nginx"}`,
+				},
+			}}},
+			{Content: "Checked piped nginx error and memory.", Model: "p/m"},
+			{Content: "Follow-up in English.", Model: "p/m"},
+		},
+	}
+	manager := sessionpkg.NewManager(sessionpkg.ManagerOptions{
+		Settings: sessionpkg.Settings{CompactionEnabled: false},
+	})
+	if _, err := manager.Create(context.Background()); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	zhPrompts := prompt.NewBuilder(prompt.BuilderOptions{Language: "zh"})
+	toolDefs := []llm.ToolDefinition{{
+		Name:        tools.ToolMemorySearch,
+		Description: "search memory",
+		InputSchema: json.RawMessage(`{"type":"object"}`),
+	}}
+
+	liveRecorder := &historyRecorder{}
+	sess := NewSession(SessionOptions{
+		LLM:            model,
+		SessionManager: manager,
+		Translator:     i18n.New("zh"),
+		Mode:           ModeInteractive,
+		PromptSet:      zhPrompts,
+		MemoryManager:  &fakeMemory{},
+		PipeReader:     strings.NewReader("upstream timed out while reading response header"),
+		InputReader:    interruptInput{},
+		Renderer:       liveRecorder,
+		Tools:          toolDefs,
+	})
+	if err := sess.Run("分析 nginx 502 超时"); err != nil {
+		t.Fatalf("Run interactive pipe: %v", err)
+	}
+
+	if got := manager.Current().Title; got != "分析nginx502超时" {
+		t.Fatalf("title = %q, want 分析nginx502超时 (must not include <piped_input>)", got)
+	}
+	if len(liveRecorder.users) != 1 || liveRecorder.users[0] != "分析 nginx 502 超时" {
+		t.Fatalf("rendered user messages = %+v, want question only without raw <piped_input>", liveRecorder.users)
+	}
+	if !strings.Contains(strings.Join(liveRecorder.notices, "\n"), "已载入管道输入（1 行）") {
+		t.Fatalf("notices = %+v, want pipe loaded line count", liveRecorder.notices)
+	}
+	for _, m := range manager.Current().Messages {
+		if m.Role == sessionpkg.RoleSystem {
+			t.Fatalf("system prompt must not be persisted in session messages: %+v", m)
+		}
+		if strings.Contains(m.Content, "Please respond in") || strings.Contains(m.Content, "<system-reminder>") {
+			t.Fatalf("language instruction leaked into persisted message: %+v", m)
+		}
+	}
+	if len(model.requests[0].Tools) != 1 {
+		t.Fatalf("interactive pipe must include tools, got %+v", model.requests[0].Tools)
+	}
+	if !strings.Contains(llm.DerefPtr(model.requests[0].Messages[0].Content), "Please respond in Chinese") {
+		t.Fatalf("expected dynamic Chinese prompt on first turn")
+	}
+	firstUserWire := llm.DerefPtr(model.requests[0].Messages[1].Content)
+	if !strings.Contains(firstUserWire, "</piped_input>\n\n<system-reminder>Respond in Chinese (Simplified).") {
+		t.Fatalf("expected Chinese tail reminder after </piped_input>, got:\n%s", firstUserWire)
+	}
+
+	enPrompts := prompt.NewBuilder(prompt.BuilderOptions{Language: "en"})
+	resumed := NewSession(SessionOptions{
+		LLM:            model,
+		SessionManager: manager,
+		Translator:     i18n.New("en"),
+		Mode:           ModeInteractive,
+		PromptSet:      enPrompts,
+		InputReader:    interruptInput{},
+		Renderer:       &turnRecorder{},
+		Tools:          toolDefs,
+	})
+	if err := resumed.handleUserTurn("continue"); err != nil {
+		t.Fatalf("resumed handleUserTurn: %v", err)
+	}
+	lastReq := model.requests[len(model.requests)-1]
+	sysContent := llm.DerefPtr(lastReq.Messages[0].Content)
+	if !strings.Contains(sysContent, "Please respond in English") || strings.Contains(sysContent, "Please respond in Chinese") {
+		t.Fatalf("expected dynamic English prompt after language switch, got:\n%s", sysContent)
+	}
+	priorUserInLastReq := llm.DerefPtr(lastReq.Messages[1].Content)
+	if strings.Contains(priorUserInLastReq, "<system-reminder>") {
+		t.Fatalf("prior turn user message must not retain transient reminder:\n%s", priorUserInLastReq)
+	}
+	latestUserInLastReq := llm.DerefPtr(lastReq.Messages[len(lastReq.Messages)-1].Content)
+	if !strings.HasSuffix(latestUserInLastReq, "<system-reminder>Respond in English.</system-reminder>") {
+		t.Fatalf("latest user message missing English tail reminder:\n%s", latestUserInLastReq)
+	}
+}
+
+type scriptedInput struct {
+	inputs []string
+	index  int
+}
+
+func (s *scriptedInput) ReadInput() (string, error) {
+	if s.index >= len(s.inputs) {
+		return "", ErrInterrupted
+	}
+	out := s.inputs[s.index]
+	s.index++
+	return out, nil
+}
+
+func TestInteractivePipeWithoutInitialQuestionWaitsForPromptInput(t *testing.T) {
+	model := &recordingScriptedModel{
+		responses: []*llm.CompletionResponse{
+			{Content: "Added 8080 proxy block.", Model: "p/m"},
+			{Content: "Updated proxy_read_timeout.", Model: "p/m"},
+		},
+	}
+
+	emptyManager := sessionpkg.NewManager(sessionpkg.ManagerOptions{
+		Settings: sessionpkg.Settings{CompactionEnabled: false},
+	})
+	_, _ = emptyManager.Create(context.Background())
+	abortedRecorder := &turnRecorder{}
+	aborted := NewSession(SessionOptions{
+		LLM:            model,
+		SessionManager: emptyManager,
+		Translator:     i18n.New("zh"),
+		Mode:           ModeInteractive,
+		PromptSet:      staticPrompts{},
+		PipeReader:     strings.NewReader("server {\n  listen 80;\n}\n"),
+		InputReader:    interruptInput{},
+		Renderer:       abortedRecorder,
+	})
+	if err := aborted.Run(""); err != nil {
+		t.Fatalf("aborted Run: %v", err)
+	}
+	if len(model.requests) != 0 {
+		t.Fatalf("expected 0 model calls when user exits before entering question, got %d", len(model.requests))
+	}
+	if len(emptyManager.Current().Messages) != 0 {
+		t.Fatalf("expected 0 persisted messages on aborted pipe session, got %+v", emptyManager.Current().Messages)
+	}
+	if !abortedRecorder.hasNotice("已载入管道输入（3 行），请输入你的问题。") {
+		t.Fatalf("notices = %+v, want pipe loaded notice", abortedRecorder.notices)
+	}
+
+	activeManager := sessionpkg.NewManager(sessionpkg.ManagerOptions{
+		Settings: sessionpkg.Settings{CompactionEnabled: false},
+	})
+	_, _ = activeManager.Create(context.Background())
+	active := NewSession(SessionOptions{
+		LLM:            model,
+		SessionManager: activeManager,
+		Translator:     i18n.New("zh"),
+		Mode:           ModeInteractive,
+		PromptSet:      staticPrompts{},
+		PipeReader:     strings.NewReader("server {\n  listen 80;\n}\n"),
+		InputReader:    &scriptedInput{inputs: []string{"帮我加个 8080 反向代理", "再把超时改成 60s"}},
+		Renderer:       &turnRecorder{},
+	})
+	if err := active.Run(""); err != nil {
+		t.Fatalf("active Run: %v", err)
+	}
+	if len(model.requests) != 2 {
+		t.Fatalf("model calls = %d, want 2", len(model.requests))
+	}
+	if got := activeManager.Current().Title; got != "帮我加个8080反向代理" {
+		t.Fatalf("title = %q, want 帮我加个8080反向代理", got)
+	}
+	firstUser := llm.DerefPtr(model.requests[0].Messages[1].Content)
+	if !strings.HasPrefix(firstUser, "帮我加个 8080 反向代理\n\n<piped_input>\nserver {") {
+		t.Fatalf("first turn user message = %q", firstUser)
+	}
+	secondUser := llm.DerefPtr(model.requests[1].Messages[len(model.requests[1].Messages)-1].Content)
+	if strings.Contains(secondUser, "<piped_input>") {
+		t.Fatalf("second turn must not re-append piped input: %q", secondUser)
+	}
+}
+
+func TestHeadlessPipeRequiresQuestionAndRunsWithoutTools(t *testing.T) {
+	model := &recordingScriptedModel{
+		responses: []*llm.CompletionResponse{
+			{Content: "Found OOM killer event.", Model: "p/m"},
+		},
+	}
+	manager := sessionpkg.NewManager(sessionpkg.ManagerOptions{
+		Settings: sessionpkg.Settings{CompactionEnabled: false},
+	})
+	_, _ = manager.Create(context.Background())
+
+	pipeRecorder := &turnRecorder{}
+	pipeSession := NewSession(SessionOptions{
+		LLM:            model,
+		SessionManager: manager,
+		Translator:     i18n.New("zh"),
+		Mode:           ModePipe,
+		PromptSet:      staticPrompts{},
+		PipeReader:     strings.NewReader("kernel: Out of memory: Killed process 1234"),
+		Renderer:       pipeRecorder,
+		Tools: []llm.ToolDefinition{{
+			Name:        tools.ToolShellExecute,
+			Description: "shell",
+			InputSchema: json.RawMessage(`{"type":"object"}`),
+		}},
+	})
+	if err := pipeSession.RunPipeAnalysis(""); !errors.Is(err, ErrPipeQuestionRequired) {
+		t.Fatalf("RunPipeAnalysis empty err = %v, want ErrPipeQuestionRequired", err)
+	}
+	if len(model.requests) != 0 {
+		t.Fatalf("expected 0 model calls when question is missing, got %d", len(model.requests))
+	}
+
+	if err := pipeSession.RunPipeAnalysis("总结 OOM 原因"); err != nil {
+		t.Fatalf("RunPipeAnalysis with question: %v", err)
+	}
+	if got := manager.Current().Title; got != "总结OOM原因" {
+		t.Fatalf("title = %q, want 总结OOM原因", got)
+	}
+	if len(model.requests[0].Tools) != 0 {
+		t.Fatalf("headless pipe request must omit tools, got %+v", model.requests[0].Tools)
+	}
+	if gotSys := llm.DerefPtr(model.requests[0].Messages[0].Content); gotSys != "system" {
+		t.Fatalf("headless pipe system prompt = %q, want unified 'system'", gotSys)
 	}
 }

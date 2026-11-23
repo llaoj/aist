@@ -2,7 +2,7 @@
 
 ## Resuming Saved Sessions (`aist sessions`)
 
-Every interactive session is persisted incrementally to `~/.aist/sessions/<id>/` (`0700` directory, `0600` files) as messages are appended — pressing `Ctrl+C` or closing a terminal never loses prior turns.
+Once a real conversation turn begins (interactive chat or pipe analysis), messages are persisted incrementally to `~/.aist/sessions/<id>/` (`0700` directory, `0600` files) — pressing `Ctrl+C` or closing a terminal never loses prior turns, while exiting an unused prompt creates no empty session record.
 
 List and resume recent sessions:
 
@@ -12,12 +12,13 @@ aist sessions
 
 ```text
 Select a session
-  2026-11-21 09:15  nginx 502 upstream timeout  (14 messages)
-  2026-11-20 18:42  prod redis memory check     (8 messages)
+  2026-11-21 09:15  nginx502upstreamtimeout  (14 messages)
+  2026-11-20 18:42  prodredismemorycheck     (8 messages)
 ↑↓ select · Enter resume · Ctrl+C quit
 ```
 
-- Restoring a session replays your conversation history and tool execution summaries using your **current** `aist lang` setting without re-executing past commands.
+- Restoring a session replays your full conversation history, command outputs, and colored file diffs using your **current** `aist lang` setting without re-executing past commands.
+- Pipe-mode analyses (`cmd | aist`) are also saved and can be resumed via `aist sessions` to continue troubleshooting interactively.
 - By default, the client retains the **10 most recent sessions** (configurable per account on the server via `settings.session.max_sessions`).
 
 ## Automatic Context Compaction

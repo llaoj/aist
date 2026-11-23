@@ -34,7 +34,7 @@ func ColorizeDiff(diff string) string {
 			b.WriteString("\n")
 		}
 		b.WriteString(colorizeDiffLine(line, headerPhase))
-		if strings.HasPrefix(line, "@@ ") {
+		if !strings.HasPrefix(line, "--- ") {
 			headerPhase = false
 		}
 	}

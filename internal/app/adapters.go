@@ -18,7 +18,7 @@ type callHooks struct {
 	stop       func()
 }
 
-func (h *callHooks) BeforeCall(_ string, cancel context.CancelFunc) {
+func (h *callHooks) BeforeCall(cancel context.CancelFunc) {
 	stop := ui.StartSpinner(
 		h.translator.T("interactive.thinking"),
 		h.translator.T("interactive.esc_hint"),
@@ -29,7 +29,7 @@ func (h *callHooks) BeforeCall(_ string, cancel context.CancelFunc) {
 	h.mu.Unlock()
 }
 
-func (h *callHooks) AfterCall(model string, err error) {
+func (h *callHooks) AfterCall() {
 	h.mu.Lock()
 	stop := h.stop
 	h.stop = nil

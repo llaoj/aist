@@ -14,7 +14,7 @@ import (
 	"github.com/llaoj/aist/internal/session"
 )
 
-func (r runtime) newSessionManager(cfg *config.Settings, id string, mode interactive.Mode) (*session.Manager, error) {
+func (r runtime) newSessionManager(cfg *config.Settings, id string) (*session.Manager, error) {
 	if r.sessionRepository == nil {
 		return nil, errors.New("session storage is unavailable")
 	}
@@ -35,13 +35,7 @@ func (r runtime) newSessionManager(cfg *config.Settings, id string, mode interac
 		},
 	})
 	if id == "" {
-		systemPrompt := ""
-		if mode == interactive.ModePipe {
-			systemPrompt = r.prompts.PipeAnalysis()
-		} else {
-			systemPrompt = r.prompts.Interactive()
-		}
-		if _, err := sessionManager.Create(context.Background(), systemPrompt); err != nil {
+		if _, err := sessionManager.Create(context.Background()); err != nil {
 			return nil, err
 		}
 		return sessionManager, nil

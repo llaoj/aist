@@ -33,7 +33,7 @@ func buildRuntime(
 		return runtime{}, err
 	}
 	home, _ := os.UserHomeDir()
-	memoryManager, memoryCatalog, memoryReport := buildMemoryManager(ctx, opts, translator, stateStore)
+	memoryManager, memoryCatalog := buildMemoryManager(ctx, opts, translator, stateStore)
 	blacklist := cfg.EffectiveBlacklist()
 	prompts := prompt.NewBuilder(prompt.BuilderOptions{
 		Language:  language,
@@ -46,7 +46,6 @@ func buildRuntime(
 		serverModel:   serverModel,
 		commandGuard:  commandguard.New(blacklist),
 		memoryManager: memoryManager,
-		memoryReport:  memoryReport,
 		fileEditor: fileedit.NewEditor(fileedit.EditorOptions{
 			HomeDir: home,
 			State:   stateStore,
@@ -60,7 +59,7 @@ func buildRuntime(
 	return rt, nil
 }
 
-func buildMemoryManager(ctx context.Context, opts Options, translator *i18n.I18n, stateStore *state.Root) (*memory.Manager, *memory.CatalogProvider, memory.Report) {
+func buildMemoryManager(ctx context.Context, opts Options, translator *i18n.I18n, stateStore *state.Root) (*memory.Manager, *memory.CatalogProvider) {
 	loader := opts.MemoryLoader
 	if loader == nil {
 		loader = memoryfile.NewLoader(memoryfile.LoadOptions{
@@ -84,13 +83,7 @@ func buildMemoryManager(ctx context.Context, opts Options, translator *i18n.I18n
 		Notifier: memoryNotifier{translator: translator},
 		MaxBytes: memory.DefaultMaxBytes,
 	})
-	report := memorySnapshot.Report()
-	catalog := catalogProvider.Catalog()
-	report.Injection = catalogProvider.Mode()
-	report.CatalogEntries = len(catalog.Entries)
-	report.CatalogBytes = catalog.Bytes
-	report.CatalogTruncated = catalog.Truncated
-	return memoryManager, catalogProvider, report
+	return memoryManager, catalogProvider
 }
 
 func buildServerModel(

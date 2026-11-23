@@ -11,22 +11,29 @@ func msg(seq int, role Role, content string) Message {
 	return Message{ID: string(rune('a' + seq)), Seq: seq, Role: role, Content: content}
 }
 
-func TestModelMessagesWithoutCompaction(t *testing.T) {
+func TestModelMessagesWithoutCompactionSkipsNonConversationRoles(t *testing.T) {
 	s := &Session{Messages: []Message{
-		msg(1, RoleSystem, "sys"),
-		msg(2, RoleUser, "hi"),
-		msg(3, RoleAssistant, "hello"),
+		msg(1, RoleSystem, "legacy-sys"),
+		msg(2, Role("developer"), "injected-dev"),
+		msg(3, Role(""), "corrupted-empty-role"),
+		msg(4, RoleUser, "hi"),
+		msg(5, RoleAssistant, "hello"),
+		msg(6, RoleTool, "tool-out"),
 	}}
 	view := s.ModelMessages()
 	if len(view) != 3 {
-		t.Fatalf("view len = %d", len(view))
+		t.Fatalf("view len = %d, want 3", len(view))
 	}
-	if view[0].Content != "sys" || view[2].Content != "hello" {
+	if view[0].Content != "hi" || view[1].Content != "hello" || view[2].Content != "tool-out" {
 		t.Fatalf("view = %+v", view)
+	}
+	after := MessagesAfterSeq(s, 1)
+	if len(after) != 3 {
+		t.Fatalf("MessagesAfterSeq len = %d, want 3: %+v", len(after), after)
 	}
 }
 
-func TestModelMessagesUsesLatestSummaryAndKeepsHead(t *testing.T) {
+func TestModelMessagesUsesLatestSummaryAndDropsLegacySystem(t *testing.T) {
 	s := &Session{
 		Messages: []Message{
 			msg(1, RoleSystem, "sys1"),
@@ -46,30 +53,27 @@ func TestModelMessagesUsesLatestSummaryAndKeepsHead(t *testing.T) {
 		LatestCompactionID: "cmp1",
 	}
 	view := s.ModelMessages()
-	if len(view) != 5 {
+	if len(view) != 3 {
 		t.Fatalf("view len = %d: %+v", len(view), view)
 	}
-	if view[0].Content != "sys1" || view[1].Content != "sys2" {
-		t.Fatalf("head changed: %+v", view[:2])
+	if !IsSummary(view[0]) || !strings.Contains(view[0].Content, "summary") {
+		t.Fatalf("summary missing: %+v", view[0])
 	}
-	if !IsSummary(view[2]) || !strings.Contains(view[2].Content, "summary") {
-		t.Fatalf("summary missing: %+v", view[2])
-	}
-	if view[3].Content != "recent question" || view[4].Content != "recent answer" {
-		t.Fatalf("tail = %+v", view[3:])
+	if view[1].Content != "recent question" || view[2].Content != "recent answer" {
+		t.Fatalf("tail = %+v", view[1:])
 	}
 	for _, message := range view {
-		if message.Content == "first objective" || message.Content == "old answer" {
-			t.Fatalf("compressed message leaked into model view: %+v", message)
+		if message.Role == RoleSystem || message.Content == "first objective" || message.Content == "old answer" {
+			t.Fatalf("unexpected message leaked into model view: %+v", message)
 		}
 	}
 	display := s.DisplayMessages()
-	if len(display) != 6 {
+	if len(display) != 4 {
 		t.Fatalf("display len = %d", len(display))
 	}
 	for _, message := range display {
-		if IsSummary(message) {
-			t.Fatalf("summary leaked into display: %+v", message)
+		if IsSummary(message) || message.Role == RoleSystem {
+			t.Fatalf("non-conversation message leaked into display: %+v", message)
 		}
 	}
 }
@@ -106,7 +110,6 @@ func TestPlanCompactionKeepsWholeTailTurns(t *testing.T) {
 		msg(6, RoleTool, "tool output"),
 	}
 	none := PlanCompaction(PlanInput{
-		Head:             []Message{msg(1, RoleSystem, "sys")},
 		PriorSummary:     raw,
 		RetainTailTokens: 1000000,
 	}, HeuristicEstimator{})
@@ -115,7 +118,6 @@ func TestPlanCompactionKeepsWholeTailTurns(t *testing.T) {
 	}
 
 	plan := PlanCompaction(PlanInput{
-		Head:             []Message{msg(1, RoleSystem, "sys")},
 		PriorSummary:     raw,
 		RetainTailTokens: 20,
 	}, HeuristicEstimator{})
@@ -236,7 +238,7 @@ func TestServiceCompactsAndResetsAnchor(t *testing.T) {
 		CompactionEnabled:      true,
 	})
 	ctx := context.Background()
-	if _, err := manager.Create(ctx, "system"); err != nil {
+	if _, err := manager.Create(ctx); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 	if _, err := manager.AppendUser(ctx, strings.Repeat("old question ", 200)); err != nil {
@@ -272,7 +274,7 @@ func TestServiceCompactsAndResetsAnchor(t *testing.T) {
 		t.Fatalf("token usage = %+v", s.TokenUsage)
 	}
 	view := s.ModelMessages()
-	if !IsSummary(view[1]) {
+	if !IsSummary(view[0]) {
 		t.Fatalf("model view missing summary: %+v", view)
 	}
 	foundOld := false
@@ -295,7 +297,7 @@ func TestServiceSecondCompactionCarriesPriorSummary(t *testing.T) {
 		CompactionEnabled:      true,
 	})
 	ctx := context.Background()
-	_, _ = manager.Create(ctx, "system")
+	_, _ = manager.Create(ctx)
 	turn := func(user, answer string) {
 		_, _ = manager.AppendUser(ctx, user)
 		_, _ = manager.AppendAssistant(ctx, answer, nil, nil, "p/m")
@@ -326,7 +328,7 @@ func TestServiceSecondCompactionCarriesPriorSummary(t *testing.T) {
 func TestServiceDerivesTitle(t *testing.T) {
 	manager := newTestManager(t, nil, Settings{})
 	ctx := context.Background()
-	_, _ = manager.Create(ctx, "system")
+	_, _ = manager.Create(ctx)
 	_, _ = manager.AppendUser(ctx, "帮我排查 nginx 502 错误，先看 upstream 和后端服务状态")
 	_, _ = manager.AppendAssistant(ctx, "先检查后端服务。", nil, nil, "p/m")
 	if err := manager.EnsureTitle(ctx); err != nil {

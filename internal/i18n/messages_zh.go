@@ -8,7 +8,6 @@ var ChineseMessages = map[string]string{
 	"interactive.input_prompt":          "用户:",
 	"interactive.input_key_hint":        "Enter 发送 · Ctrl+C 退出",
 	"interactive.goodbye":               "再见！",
-	"interactive.session_saved":         "会话已保存，可使用 aist sessions 恢复。",
 	"interactive.thinking":              "思考中",
 	"interactive.execution_output":      "执行输出",
 	"interactive.user_label":            "用户",
@@ -112,12 +111,12 @@ var ChineseMessages = map[string]string{
 	"sessions.compacted":      "上下文已压缩",
 	"sessions.list_failed":    "读取会话失败: %v",
 
+	// Pipe mode messages
+	"pipe.input_loaded":        "已载入管道输入（%d 行）",
+	"pipe.input_loaded_prompt": "已载入管道输入（%d 行），请输入你的问题。",
+	"pipe.question_required":   `非交互管道模式下请提供问题，例如: cmd | aist "你的问题"`,
+
 	// Tool display messages
-	"tool.name.shell_execute":   "执行命令",
-	"tool.name.memory_search":   "搜索记忆",
-	"tool.name.memory_save":     "保存记忆",
-	"tool.name.file_edit":       "编辑文件",
-	"tool.name.unknown":         "未知工具",
 	"tool.invoke.shell_execute": "[%s] $ %s",
 	"tool.invoke.memory_search": "搜索记忆「%s」",
 	"tool.invoke.memory_save":   "保存记忆「%s」（%s）",

@@ -286,10 +286,6 @@ func runLogout(ctx context.Context) error {
 
 const defaultWhoamiTimeout = 3 * time.Second
 
-func runWhoami(ctx context.Context) error {
-	return printWhoami(ctx, os.Stdout, defaultWhoamiTimeout)
-}
-
 func printWhoami(ctx context.Context, out io.Writer, timeout time.Duration) error {
 	store, err := newTokenStore(ctx)
 	if err != nil {

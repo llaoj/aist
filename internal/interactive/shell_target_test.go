@@ -33,12 +33,12 @@ func (f *fakeShellExecutor) Execute(_ context.Context, req ShellCommandRequest) 
 }
 
 type fakeConfirmer struct {
-	requests  []ConfirmationRequest
+	types     []tools.CommandType
 	decisions []Decision
 }
 
-func (f *fakeConfirmer) ConfirmCommand(_ context.Context, req ConfirmationRequest) (Decision, error) {
-	f.requests = append(f.requests, req)
+func (f *fakeConfirmer) ConfirmCommand(_ context.Context, cmdType tools.CommandType) (Decision, error) {
+	f.types = append(f.types, cmdType)
 	if len(f.decisions) == 0 {
 		return DecisionApprove, nil
 	}
@@ -106,11 +106,8 @@ func TestShellTargetIsExecutedAndTagged(t *testing.T) {
 	if len(executor.requests) != 1 || executor.requests[0].Target.Host() != "web1" {
 		t.Fatalf("requests = %+v", executor.requests)
 	}
-	if len(confirmer.requests) != 1 || len(confirmer.requests[0].Targets) != 1 || confirmer.requests[0].Targets[0] != "web1" {
-		t.Fatalf("confirmations = %+v", confirmer.requests)
-	}
-	if confirmer.requests[0].Invocation != "[web1] $ df -h" {
-		t.Fatalf("confirmation display = %q", confirmer.requests[0].Invocation)
+	if len(confirmer.types) != 1 || confirmer.types[0] != tools.CommandTypeQuery {
+		t.Fatalf("confirmations = %+v", confirmer.types)
 	}
 	result := findToolResult(t, ToLLMMessages(session.sessionManager.DisplayMessages()), "call-1")
 	for _, want := range []string{"Status: success\nTarget: web1\nExit Code: 0\nCommand: df -h\n\n[Output]\ndisk ok"} {
@@ -131,8 +128,8 @@ func TestShellInvalidTargetIsRejectedBeforeExecution(t *testing.T) {
 	if err := session.handleUserTurn("check disk"); err != nil {
 		t.Fatalf("handleUserTurn: %v", err)
 	}
-	if len(executor.requests) != 0 || len(confirmer.requests) != 0 {
-		t.Fatalf("unexpected execution/confirmation: %+v %+v", executor.requests, confirmer.requests)
+	if len(executor.requests) != 0 || len(confirmer.types) != 0 {
+		t.Fatalf("unexpected execution/confirmation: %+v %+v", executor.requests, confirmer.types)
 	}
 	result := findToolResult(t, ToLLMMessages(session.sessionManager.DisplayMessages()), "call-2")
 	if !strings.Contains(result, "Invalid target") {
@@ -158,26 +155,18 @@ func TestQueryCommandsRequireConfirmation(t *testing.T) {
 	if len(executor.requests) != 3 {
 		t.Fatalf("executions = %+v", executor.requests)
 	}
-	if len(confirmer.requests) != 3 {
-		t.Fatalf("confirmations = %+v", confirmer.requests)
+	if len(confirmer.types) != 3 {
+		t.Fatalf("confirmations = %+v", confirmer.types)
 	}
 
-	want := []struct {
-		cmdType    tools.CommandType
-		target     string
-		invocation string
-	}{
-		{cmdType: tools.CommandTypeQuery, target: "web1", invocation: "[web1] $ df -h"},
-		{cmdType: tools.CommandTypeQuery, target: "web2", invocation: "[web2] $ free -m"},
-		{cmdType: tools.CommandTypeModify, target: "web1", invocation: "[web1] $ systemctl restart nginx"},
+	wantTypes := []tools.CommandType{
+		tools.CommandTypeQuery,
+		tools.CommandTypeQuery,
+		tools.CommandTypeModify,
 	}
-	for i, item := range want {
-		req := confirmer.requests[i]
-		if req.Type != item.cmdType || req.UniqueTargets != 1 || len(req.Targets) != 1 || req.Targets[0] != item.target {
-			t.Fatalf("confirmation %d = %+v", i, req)
-		}
-		if req.Invocation != item.invocation {
-			t.Fatalf("confirmation %d invocation = %q, want %q", i, req.Invocation, item.invocation)
+	for i, wantType := range wantTypes {
+		if confirmer.types[i] != wantType {
+			t.Fatalf("confirmation %d = %v, want %v", i, confirmer.types[i], wantType)
 		}
 	}
 }
@@ -196,8 +185,8 @@ func TestQueryCommandSkipContinuesToNextQuery(t *testing.T) {
 	if len(executor.requests) != 1 || executor.requests[0].Target.Host() != "web2" {
 		t.Fatalf("executions = %+v", executor.requests)
 	}
-	if len(confirmer.requests) != 2 {
-		t.Fatalf("confirmations = %+v", confirmer.requests)
+	if len(confirmer.types) != 2 {
+		t.Fatalf("confirmations = %+v", confirmer.types)
 	}
 }
 
@@ -307,8 +296,8 @@ func TestFullScreenTUICommandsAreBlockedBeforeConfirmation(t *testing.T) {
 	if err := session.handleUserTurn("edit config and inspect logs"); err != nil {
 		t.Fatalf("handleUserTurn: %v", err)
 	}
-	if len(confirmer.requests) != 0 || len(executor.requests) != 0 {
-		t.Fatalf("TUI commands must not reach confirmer or executor: %+v %+v", confirmer.requests, executor.requests)
+	if len(confirmer.types) != 0 || len(executor.requests) != 0 {
+		t.Fatalf("TUI commands must not reach confirmer or executor: %+v %+v", confirmer.types, executor.requests)
 	}
 
 	messages := ToLLMMessages(session.sessionManager.DisplayMessages())
@@ -333,8 +322,6 @@ type strictValidatingModel struct {
 	responses []*llm.CompletionResponse
 	index     int
 }
-
-func (m *strictValidatingModel) Name() string { return "strict" }
 
 func (m *strictValidatingModel) Call(_ context.Context, req llm.CompletionRequest) (*llm.CompletionResponse, error) {
 	assertValidWireToolPairing(m.t, req.Messages)
@@ -403,7 +390,7 @@ func TestLegacySessionWithMissingToolResultsSelfHealsAcrossMultipleTurns(t *test
 	manager := sessionpkg.NewManager(sessionpkg.ManagerOptions{
 		Settings: sessionpkg.Settings{CompactionEnabled: false},
 	})
-	if _, err := manager.Create(ctx, "system"); err != nil {
+	if _, err := manager.Create(ctx); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 	_, _ = manager.AppendUser(ctx, "initial question")

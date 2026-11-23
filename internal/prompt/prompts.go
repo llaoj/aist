@@ -12,10 +12,10 @@ type MemoryCatalog interface {
 	PromptBlock() string
 }
 
-// Set exposes the prompts used by a session.
+// Set exposes the runtime prompts used by a session.
 type Set interface {
-	Interactive() string
-	PipeAnalysis() string
+	System() string
+	LanguageReminder() string
 	Compaction() string
 	FollowUpLimit() string
 }
@@ -27,7 +27,7 @@ type BuilderOptions struct {
 	Blacklist []string
 }
 
-// Builder constructs prompts for a language and context providers.
+// Builder dynamically assembles prompts from the active language and context providers.
 type Builder struct {
 	Language  string
 	Memory    MemoryCatalog
@@ -43,14 +43,18 @@ func NewBuilder(opts BuilderOptions) *Builder {
 	}
 }
 
-// Interactive returns the interactive-mode prompt.
-func (b *Builder) Interactive() string {
-	return b.withContext(b.language(baseInteractivePrompt))
+// System returns the unified system prompt assembled with current runtime context and language.
+func (b *Builder) System() string {
+	return b.language(b.withContext(baseSystemPrompt))
 }
 
-// PipeAnalysis returns the pipe-mode prompt.
-func (b *Builder) PipeAnalysis() string {
-	return b.withContext(b.language(basePipeAnalysisPrompt))
+// LanguageReminder returns a short per-request tail reminder so long English
+// logs or prior-turn history do not dilute the configured reply language.
+func (b *Builder) LanguageReminder() string {
+	if b.Language == "zh" {
+		return "<system-reminder>Respond in Chinese (Simplified). Keep commands, paths, and identifiers in their original form.</system-reminder>"
+	}
+	return "<system-reminder>Respond in English.</system-reminder>"
 }
 
 // Compaction returns the conversation compaction prompt.
@@ -66,7 +70,7 @@ func (b *Builder) FollowUpLimit() string {
 
 func (b *Builder) language(base string) string {
 	if b.Language == "zh" {
-		return base + "\n\nIMPORTANT: Please respond in Chinese (Simplified)."
+		return base + "\n\nIMPORTANT: Please respond in Chinese (Simplified). Keep commands, paths, and identifiers in their original form."
 	}
 	return base + "\n\nIMPORTANT: Please respond in English."
 }

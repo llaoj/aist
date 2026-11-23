@@ -101,8 +101,8 @@ func TestNewAndSession(t *testing.T) {
 	if got := a.Translator().T("interactive.goodbye"); got != "再见！" {
 		t.Fatalf("translator goodbye = %q", got)
 	}
-	if !strings.Contains(a.runtime.prompts.Interactive(), "Chinese (Simplified)") {
-		t.Fatalf("prompt did not follow local Chinese preference:\n%s", a.runtime.prompts.Interactive())
+	if !strings.Contains(a.runtime.prompts.System(), "Chinese (Simplified)") {
+		t.Fatalf("prompt did not follow local Chinese preference:\n%s", a.runtime.prompts.System())
 	}
 	if _, err := a.NewSession(interactive.ModeInteractive); err != nil {
 		t.Fatalf("NewSession: %v", err)
@@ -218,15 +218,11 @@ func TestNewLoadsMemoryAndReportsInjection(t *testing.T) {
 	if a.runtime.memoryManager == nil {
 		t.Fatal("MemoryManager is nil")
 	}
-	report := a.runtime.memoryReport
-	if report.Loaded != 1 {
+	if report := a.runtime.memoryManager.Report(); report.Loaded != 1 {
 		t.Fatalf("loaded = %d", report.Loaded)
 	}
-	if report.Injection != memory.InjectionModeCatalog {
-		t.Fatalf("injection = %q", report.Injection)
-	}
-	if report.CatalogEntries != 1 || report.CatalogBytes == 0 {
-		t.Fatalf("catalog = %+v", report)
+	if !strings.Contains(a.runtime.prompts.System(), "prod-k8s") {
+		t.Fatalf("memory catalog not injected into system prompt: %s", a.runtime.prompts.System())
 	}
 }
 
@@ -241,10 +237,8 @@ func TestNewInjectsBlacklistIntoSystemPrompts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	for _, out := range []string{a.runtime.prompts.Interactive(), a.runtime.prompts.PipeAnalysis()} {
-		if !strings.Contains(out, "- rm *\n- shutdown\n") {
-			t.Fatalf("prompt missing account blacklist:\n%s", out)
-		}
+	if out := a.runtime.prompts.System(); !strings.Contains(out, "- rm *\n- shutdown\n") {
+		t.Fatalf("prompt missing account blacklist:\n%s", out)
 	}
 }
 

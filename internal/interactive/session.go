@@ -3,6 +3,7 @@ package interactive
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"strings"
 
@@ -70,6 +71,7 @@ type Session struct {
 	commandConfirmer     CommandConfirmer
 	shellCommandExecutor ShellCommandExecutor
 	pipeReader           io.Reader
+	pendingPipeInput     string
 	tools                []llm.ToolDefinition
 }
 
@@ -108,29 +110,56 @@ func NewSession(opts SessionOptions) *Session {
 		s.commandGuard = commandguard.New(nil)
 	}
 	if s.sessionManager == nil {
-		systemPrompt := ""
-		if s.promptSet != nil {
-			switch s.mode {
-			case ModeInteractive:
-				systemPrompt = s.promptSet.Interactive()
-			case ModePipe:
-				systemPrompt = s.promptSet.PipeAnalysis()
-			}
-		}
 		manager := session.NewManager(session.ManagerOptions{
 			Settings: session.Settings{
 				CompactionEnabled: false,
 			},
 		})
-		_, _ = manager.Create(context.Background(), systemPrompt)
+		_, _ = manager.Create(context.Background())
 		s.sessionManager = manager
 	}
 	return s
 }
 
-// Run starts the interactive session.
+// SetPipeReader attaches buffered piped stdin so an interactive or headless
+// session can ingest piped input before reading terminal prompts.
+func (s *Session) SetPipeReader(reader io.Reader) {
+	s.pipeReader = reader
+}
+
+// Run starts the interactive session, processing optional piped input or an
+// initial question before entering the interactive input loop.
 func (s *Session) Run(initialQuestion string) error {
 	s.renderWelcome()
+	if s.pipeReader != nil {
+		rawPipe, err := s.drainPipeReader()
+		if err != nil {
+			return err
+		}
+		trimmedQuestion := strings.TrimSpace(initialQuestion)
+		lineCount := countPipeLines(rawPipe)
+		if trimmedQuestion == "" {
+			s.pendingPipeInput = rawPipe
+			s.renderer.RenderNotice(NoticeLevelInfo, s.translator.T("pipe.input_loaded_prompt", lineCount))
+			return s.runLoop()
+		}
+
+		ctx := context.Background()
+		if err := s.sessionManager.SetDerivedTitle(ctx, trimmedQuestion); err != nil {
+			return err
+		}
+		userMessage := buildPipedUserMessage(trimmedQuestion, rawPipe)
+		s.renderer.RenderNotice(NoticeLevelInfo, s.translator.T("pipe.input_loaded", lineCount))
+		s.renderer.RenderUserMessage(trimmedQuestion)
+		if _, err := s.sessionManager.AppendUser(ctx, userMessage); err != nil {
+			return err
+		}
+		if err := s.runTurn(ctx); err != nil {
+			return err
+		}
+		return s.runLoop()
+	}
+
 	if initialQuestion != "" {
 		s.renderer.RenderUserMessage(initialQuestion)
 		if err := s.handleUserTurn(initialQuestion); err != nil {
@@ -153,27 +182,24 @@ func (s *Session) renderWelcome() {
 	s.renderer.RenderWelcome(s.version)
 }
 
-// RunPipeAnalysis analyzes stdin and exits without entering the interactive loop.
+// RunPipeAnalysis runs a single headless read-only turn when stdout is
+// redirected or no controlling terminal (/dev/tty) is available.
 func (s *Session) RunPipeAnalysis(initialQuestion string) error {
-	ctx := context.Background()
-	if initialQuestion != "" {
-		if _, err := s.sessionManager.AppendUser(ctx, TruncateContent(initialQuestion, MaxTurnChars)); err != nil {
-			return err
-		}
-	} else {
-		if _, err := s.sessionManager.AppendUser(ctx, "Analyze pipe input, identify problems, and provide me with solutions."); err != nil {
-			return err
-		}
+	trimmedQuestion := strings.TrimSpace(initialQuestion)
+	if trimmedQuestion == "" {
+		return ErrPipeQuestionRequired
 	}
-
-	if s.pipeReader == nil {
-		return errors.New("pipe reader is not configured")
-	}
-	pipeData, err := io.ReadAll(io.LimitReader(s.pipeReader, MaxPipeDataBytes))
+	rawPipe, err := s.drainPipeReader()
 	if err != nil {
 		return err
 	}
-	if _, err := s.sessionManager.AppendUser(ctx, TruncateContent(string(pipeData), MaxTurnChars*MaxPipeInputMessages)); err != nil {
+
+	ctx := context.Background()
+	if err := s.sessionManager.SetDerivedTitle(ctx, trimmedQuestion); err != nil {
+		return err
+	}
+	userMessage := buildPipedUserMessage(trimmedQuestion, rawPipe)
+	if _, err := s.sessionManager.AppendUser(ctx, userMessage); err != nil {
 		return err
 	}
 	if err := s.sessionManager.CompactIfNeeded(ctx); err != nil {
@@ -194,10 +220,47 @@ func (s *Session) RunPipeAnalysis(initialQuestion string) error {
 		return err
 	}
 	_ = s.sessionManager.EnsureTitle(ctx)
-	s.renderer.RenderAssistantMessage(resp.Model, resp.Content)
-	s.renderer.RenderTurnComplete()
+	s.renderer.RenderAssistantMessage(resp.Content)
 	s.renderer.Sync()
 	return nil
+}
+
+func (s *Session) drainPipeReader() (string, error) {
+	if s.pipeReader == nil {
+		return "", errors.New("pipe reader is not configured")
+	}
+	pipeData, err := io.ReadAll(io.LimitReader(s.pipeReader, MaxPipeDataBytes))
+	if err != nil {
+		return "", err
+	}
+	s.pipeReader = nil
+	return string(pipeData), nil
+}
+
+const emptyPipedInputPlaceholder = "(empty input)"
+
+func countPipeLines(rawPipe string) int {
+	trimmed := strings.TrimRight(rawPipe, "\r\n")
+	if trimmed == "" || trimmed == emptyPipedInputPlaceholder {
+		return 0
+	}
+	return strings.Count(trimmed, "\n") + 1
+}
+
+func buildPipedUserMessage(question, rawPipe string) string {
+	pipeBody := TruncateContent(strings.TrimRight(rawPipe, "\r\n"), MaxTurnChars*MaxPipeInputMessages)
+	if strings.TrimSpace(pipeBody) == "" {
+		pipeBody = emptyPipedInputPlaceholder
+	}
+	return fmt.Sprintf("%s\n\n<piped_input>\n%s\n</piped_input>", TruncateContent(question, MaxTurnChars), pipeBody)
+}
+
+func splitPipedUserMessage(content string) (question, pipeBody string, hasPipe bool) {
+	q, rest, found := strings.Cut(content, "\n\n<piped_input>\n")
+	if !found || !strings.HasSuffix(rest, "\n</piped_input>") {
+		return content, "", false
+	}
+	return q, strings.TrimSuffix(rest, "\n</piped_input>"), true
 }
 
 func (s *Session) runLoop() error {
@@ -223,6 +286,17 @@ func (s *Session) runLoop() error {
 // handleUserTurn handles one user question and any tool loop it triggers.
 func (s *Session) handleUserTurn(userInput string) error {
 	ctx := context.Background()
+	if s.pendingPipeInput != "" {
+		rawPipe := s.pendingPipeInput
+		s.pendingPipeInput = ""
+		if err := s.sessionManager.SetDerivedTitle(ctx, userInput); err != nil {
+			return err
+		}
+		if _, err := s.sessionManager.AppendUser(ctx, buildPipedUserMessage(userInput, rawPipe)); err != nil {
+			return err
+		}
+		return s.runTurn(ctx)
+	}
 	if _, err := s.sessionManager.AppendUser(ctx, TruncateContent(userInput, MaxTurnChars)); err != nil {
 		return err
 	}
@@ -302,21 +376,53 @@ func (s *Session) runModelStep(ctx context.Context, isFinalFollowUp bool) (*llm.
 		return nil, err
 	}
 	_ = s.sessionManager.EnsureTitle(ctx)
-	s.renderer.RenderAssistantMessage(resp.Model, resp.Content)
+	s.renderer.RenderAssistantMessage(resp.Content)
 	return resp, nil
 }
 
 func (s *Session) buildRequestMessages(isFinalFollowUp bool) []llm.ChatMessage {
-	messages := EnsureToolResults(ToLLMMessages(s.sessionManager.ModelMessages()))
-	if isFinalFollowUp && s.promptSet != nil {
-		if reminder := strings.TrimSpace(s.promptSet.FollowUpLimit()); reminder != "" {
+	raw := EnsureToolResults(ToLLMMessages(s.sessionManager.ModelMessages()))
+	messages := make([]llm.ChatMessage, 0, len(raw)+2)
+	if s.promptSet != nil {
+		if sys := strings.TrimSpace(s.promptSet.System()); sys != "" {
 			messages = append(messages, llm.ChatMessage{
-				Role:    "user",
-				Content: llm.StringPtr(reminder),
+				Role:    string(session.RoleSystem),
+				Content: llm.StringPtr(sys),
 			})
 		}
 	}
-	return MergeAdjacentUserMessages(messages)
+	messages = append(messages, raw...)
+	messages = MergeAdjacentUserMessages(messages)
+	if s.promptSet != nil {
+		if langReminder := strings.TrimSpace(s.promptSet.LanguageReminder()); langReminder != "" {
+			appendReminderToLastUserMessage(messages, langReminder)
+		}
+		if isFinalFollowUp {
+			if reminder := strings.TrimSpace(s.promptSet.FollowUpLimit()); reminder != "" {
+				messages = append(messages, llm.ChatMessage{
+					Role:    "user",
+					Content: llm.StringPtr(reminder),
+				})
+				messages = MergeAdjacentUserMessages(messages)
+			}
+		}
+	}
+	return messages
+}
+
+func appendReminderToLastUserMessage(messages []llm.ChatMessage, reminder string) {
+	for i := len(messages) - 1; i >= 0; i-- {
+		if messages[i].Role != string(session.RoleUser) {
+			continue
+		}
+		curr := llm.DerefPtr(messages[i].Content)
+		if curr == "" {
+			messages[i].Content = llm.StringPtr(reminder)
+		} else {
+			messages[i].Content = llm.StringPtr(curr + "\n\n" + reminder)
+		}
+		return
+	}
 }
 
 func (s *Session) appendToolResult(ctx context.Context, callID, content string, outcome tools.ToolOutcome) {

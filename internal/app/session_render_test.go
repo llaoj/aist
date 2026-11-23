@@ -52,7 +52,7 @@ func TestTerminalRendererRegionsHaveSingleBlankLine(t *testing.T) {
 	out := captureOutput(t, func() {
 		renderer.RenderWelcome("dev")
 		renderer.RenderUserMessage("hello")
-		renderer.RenderAssistantMessage("", "line one\n\nline two\n\n\nline three")
+		renderer.RenderAssistantMessage("line one\n\nline two\n\n\nline three")
 		renderer.RenderShellCommand("1/1", tools.ShellCommand{
 			Target:      "local",
 			CommandLine: "uptime",
@@ -114,11 +114,7 @@ func TestTerminalConfirmerOmitsCommandLineInPrompt(t *testing.T) {
 		},
 	}
 
-	decision, err := confirmer.ConfirmCommand(context.Background(), interactive.ConfirmationRequest{
-		Type:       tools.CommandTypeModify,
-		Targets:    []string{"local"},
-		Invocation: "[local] $ ls -la ~/.atomcode",
-	})
+	decision, err := confirmer.ConfirmCommand(context.Background(), tools.CommandTypeModify)
 	if err != nil {
 		t.Fatalf("ConfirmCommand: %v", err)
 	}

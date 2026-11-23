@@ -21,6 +21,9 @@ func RenderErrorMessage(translator tools.Translator, err error) string {
 	if errors.Is(err, llm.ErrAuthentication) {
 		return translator.T("error.auth_expired")
 	}
+	if errors.Is(err, ErrPipeQuestionRequired) {
+		return translator.T("pipe.question_required")
+	}
 
 	var status *llm.StatusError
 	if !errors.As(err, &status) {

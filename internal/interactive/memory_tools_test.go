@@ -10,14 +10,13 @@ import (
 	"github.com/llaoj/aist/internal/llm"
 	"github.com/llaoj/aist/internal/memory"
 	sessionpkg "github.com/llaoj/aist/internal/session"
+	"github.com/llaoj/aist/internal/tools"
 )
 
 type scriptedModel struct {
 	responses []*llm.CompletionResponse
 	index     int
 }
-
-func (m *scriptedModel) Name() string { return "scripted" }
 
 func (m *scriptedModel) Call(context.Context, llm.CompletionRequest) (*llm.CompletionResponse, error) {
 	return m.next(), nil
@@ -54,7 +53,7 @@ func (r *turnRecorder) hasNotice(substring string) bool {
 	return false
 }
 
-func (r *turnRecorder) RenderAssistantMessage(_ string, content string) {
+func (r *turnRecorder) RenderAssistantMessage(content string) {
 	r.assistantTexts = append(r.assistantTexts, content)
 }
 
@@ -67,9 +66,9 @@ func (r *turnRecorder) lastAssistantText() string {
 
 type staticPrompts struct{}
 
-func (staticPrompts) Interactive() string  { return "interactive" }
-func (staticPrompts) PipeAnalysis() string { return "pipe" }
-func (staticPrompts) Compaction() string   { return "summary" }
+func (staticPrompts) System() string           { return "system" }
+func (staticPrompts) LanguageReminder() string { return "" }
+func (staticPrompts) Compaction() string       { return "summary" }
 func (staticPrompts) FollowUpLimit() string {
 	return "<system-reminder>MAXIMUM STEPS REACHED</system-reminder>"
 }
@@ -394,8 +393,8 @@ type orderedConfirmer struct {
 	decision Decision
 }
 
-func (c *orderedConfirmer) ConfirmCommand(_ context.Context, req ConfirmationRequest) (Decision, error) {
-	*c.events = append(*c.events, "confirm_shell:"+req.Invocation)
+func (c *orderedConfirmer) ConfirmCommand(_ context.Context, cmdType tools.CommandType) (Decision, error) {
+	*c.events = append(*c.events, "confirm_shell:"+cmdType.String())
 	if c.decision != DecisionUnknown {
 		return c.decision, nil
 	}
@@ -463,7 +462,7 @@ func TestToolCallsExecuteInModelOrder(t *testing.T) {
 	}
 
 	wantOrder := []string{
-		"confirm_shell:[local] $ df -h",
+		"confirm_shell:query",
 		"memory_search:prod",
 		"confirm_file:/tmp/app.conf",
 		"memory_save:prod-hosts",
@@ -532,7 +531,7 @@ func TestRejectRemainingSkipsSubsequentConfirmedToolsButRunsMemoryTools(t *testi
 		t.Fatalf("turn 1: %v", err)
 	}
 	wantOrder := []string{
-		"confirm_shell:[local] $ sudo rm -rf /tmp/x",
+		"confirm_shell:modify",
 		"memory_search:prod",
 		"memory_save:prod",
 	}

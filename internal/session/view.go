@@ -2,22 +2,23 @@ package session
 
 const summaryMarker = `<compressed_history priority="high">`
 
-// ModelMessages returns the sequence sent to a model: protected system head,
-// the latest compaction summary, then raw messages after the covered range.
+// ModelMessages returns the conversation sequence sent to a model: the latest
+// compaction summary (if any) followed by raw non-system messages after the
+// covered range. Runtime system prompts are assembled dynamically by the caller
+// and never persisted as session messages.
 func (s *Session) ModelMessages() []Message {
 	if s == nil {
 		return nil
 	}
-	head, raw := splitHead(s.Messages)
+	raw := conversationMessages(s.Messages)
 	latest := s.LatestCompaction()
 	if latest == nil {
-		return appendMessages(nil, s.Messages)
+		return appendMessages(nil, raw)
 	}
 
-	out := make([]Message, 0, len(head)+1+len(raw))
-	out = append(out, head...)
+	out := make([]Message, 0, 1+len(raw))
 	out = append(out, summaryMessage(latest))
-	for _, message := range s.Messages {
+	for _, message := range raw {
 		if message.Seq > latest.CoversToSeq {
 			out = append(out, message)
 		}
@@ -25,28 +26,22 @@ func (s *Session) ModelMessages() []Message {
 	return out
 }
 
-// DisplayMessages returns every raw message. Compaction summaries are never
-// part of the display view.
+// DisplayMessages returns every conversation message. Legacy system messages
+// and synthetic compaction summaries are excluded from the display view.
 func (s *Session) DisplayMessages() []Message {
 	if s == nil {
 		return nil
 	}
-	return appendMessages(nil, s.Messages)
+	return appendMessages(nil, conversationMessages(s.Messages))
 }
 
-// HeadMessages returns the protected system prefix.
-func (s *Session) HeadMessages() []Message {
-	head, _ := splitHead(s.Messages)
-	return appendMessages(nil, head)
-}
-
-// RawMessagesAfterCompaction returns raw messages after the latest compaction
-// range. Before the first compaction it returns all non-head messages.
+// RawMessagesAfterCompaction returns conversation messages after the latest
+// compaction range. Before the first compaction it returns all conversation messages.
 func (s *Session) RawMessagesAfterCompaction() []Message {
 	if s == nil {
 		return nil
 	}
-	_, raw := splitHead(s.Messages)
+	raw := conversationMessages(s.Messages)
 	latest := s.LatestCompaction()
 	if latest == nil {
 		return appendMessages(nil, raw)
@@ -60,12 +55,24 @@ func (s *Session) RawMessagesAfterCompaction() []Message {
 	return out
 }
 
-func splitHead(messages []Message) (head []Message, rest []Message) {
-	index := 0
-	for index < len(messages) && messages[index].Role == RoleSystem {
-		index++
+func isConversationRole(role Role) bool {
+	switch role {
+	case RoleUser, RoleAssistant, RoleTool:
+		return true
+	default:
+		return false
 	}
-	return messages[:index], messages[index:]
+}
+
+func conversationMessages(messages []Message) []Message {
+	out := make([]Message, 0, len(messages))
+	for _, message := range messages {
+		if !isConversationRole(message.Role) {
+			continue
+		}
+		out = append(out, message)
+	}
+	return out
 }
 
 func summaryMessage(compaction *Compaction) Message {
@@ -77,13 +84,16 @@ func summaryMessage(compaction *Compaction) Message {
 	}
 }
 
-// MessagesAfterSeq returns raw messages with Seq greater than seq.
+// MessagesAfterSeq returns conversation messages with Seq greater than seq.
 func MessagesAfterSeq(s *Session, seq int) []Message {
 	if s == nil {
 		return nil
 	}
 	out := make([]Message, 0)
 	for _, message := range s.Messages {
+		if !isConversationRole(message.Role) {
+			continue
+		}
 		if message.Seq > seq {
 			out = append(out, message)
 		}

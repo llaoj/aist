@@ -176,11 +176,6 @@ func parseCommandType(value string) (CommandType, error) {
 // ToolName returns the canonical tool name.
 func (c ShellCommand) ToolName() string { return ToolShellExecute }
 
-// LocalizedName returns the localized tool name.
-func (c ShellCommand) LocalizedName(t Translator) string {
-	return t.T("tool.name.shell_execute")
-}
-
 // FormatInvocation renders the command, target and step for humans.
 func (c ShellCommand) FormatInvocation(t Translator) string {
 	target := c.Target

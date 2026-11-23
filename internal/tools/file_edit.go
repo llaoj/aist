@@ -97,11 +97,6 @@ func ParseFileEditArgs(raw string) (FileEditArgs, error) {
 // ToolName returns the canonical tool name.
 func (a FileEditArgs) ToolName() string { return ToolFileEdit }
 
-// LocalizedName returns the localized tool name.
-func (a FileEditArgs) LocalizedName(t Translator) string {
-	return t.T("tool.name.file_edit")
-}
-
 // FormatInvocation renders the target file path.
 func (a FileEditArgs) FormatInvocation(t Translator) string {
 	parsed, _ := target.New(a.Target)

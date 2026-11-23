@@ -13,7 +13,7 @@ This guide summarizes the internal architecture across the client and server pac
 
 ## 2. Prompt Layering (`internal/prompt` & `internal/tools`)
 
-- **English Base Instructions + Dynamic Reply Language**: All static system prompts (`Interactive`, `PipeAnalysis`, `Compaction`, `FollowUpLimit`), tool schemas, and tool result headers (`Status`, `Target`, `Exit Code`, `Detail`) are authored in English for cross-model instruction stability. `prompt.Builder` appends the explicit reply-language directive (`Chinese (Simplified)` vs `English`) from `preferences.json` onto `Interactive` and `PipeAnalysis` prompts (`Compaction` stays pure English).
+- **Unified English Base Prompt + Dynamic Runtime Language Injection**: A single unified `System` prompt covers both tool-enabled interactive turns and toolless headless turns. All static templates (`System`, `Compaction`, `FollowUpLimit`), tool schemas, and tool result headers (`Status`, `Target`, `Exit Code`, `Detail`) are authored in English for cross-model instruction stability; `prompt.Builder` dynamically injects Memory, command blacklists, and the active reply-language directive (`Chinese (Simplified)` vs `English`) from `preferences.json` at request time without persisting system prompts into session files (`Compaction` stays pure English).
 - **Context Placeholders**:
   - `{{MEMORY}}`: replaced by `memory.CatalogProvider.PromptBlock()` (up to `32 KiB` of `Name`, `Type`, `Summary`, `Modified`; full entry text is fetched on demand via `memory_search`).
   - `{{BLACKLIST}}`: replaced by `<command_blacklist>` (up to `4 KiB` when non-empty; zero token overhead when empty).
@@ -23,7 +23,7 @@ This guide summarizes the internal architecture across the client and server pac
 - **Language-Neutral Persistence**: `messages.jsonl` stores `ToolOutcome` (`success` / `failed` / `skipped` / `rejected`) and raw tool call JSON; `tools.DecodeInvocation` + `i18n` render historical tool lines dynamically in the active language during `aist sessions` replay.
 - **Protocol Repair**: Before every model call, `ModelMessages()` pairs `assistant.tool_calls` with `role=tool` responses (synthesizing placeholder tool messages if interrupted mid-batch, dropping orphan/duplicate tool messages, and merging adjacent user messages).
 - **Heuristic Token Estimator**: Estimates tokens without bundling large tokenizer tables by classifying messages into natural vs structured text (`>= 25%` symbol ratio or tool payloads) with per-character weights (ASCII letters, digits, punctuation, CJK), anchored to the latest upstream `usage.total_tokens` (`TokenAnchor`).
-- **Turn-Boundary Compaction (`planner.go`)**: Groups messages by real `user` turns, protects leading `system` messages and trailing turns up to `keep_tokens` (always keeping the latest turn), summarizes middle turns into `<compressed_history priority="high">`, and records a `compaction` event in `messages.jsonl`.
+- **Turn-Boundary Compaction (`planner.go`)**: Groups messages by real `user` turns, preserves trailing turns up to `keep_tokens` (always keeping the latest turn), summarizes middle turns into `<compressed_history priority="high">`, and records a `compaction` event in `messages.jsonl`.
 
 ## 4. Tool Result Prefix-First Format & Server Audit (`internal/interactive` → `internal/server/audit.go`)
 

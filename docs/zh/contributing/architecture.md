@@ -13,7 +13,7 @@
 
 ## 2. 提示词分层与动态注入（`internal/prompt` & `internal/tools`）
 
-- **英文指令底座 + 本地语言后缀**：所有基础提示词模板、4 个工具的 JSON Schema 及回写状态头均使用英文编写以保证跨模型指令遵循稳定性；`prompt.Builder` 根据本地 `preferences.json` 仅在交互模式和管道模式末尾追加显式回复语言指令（压缩提示词保持纯英文）。
+- **统一英文指令底座 + 运行时动态语言注入**：全局仅维护一套统一的 `System` 提示词模板（自适应请求是否挂载工具），连同 `Compaction`、`FollowUpLimit`、4 个工具的 JSON Schema 及回写状态头均使用英文编写以保证跨模型指令遵循稳定性；`prompt.Builder` 在每次发起请求时根据当前 `preferences.json` 动态拼接显式回复语言指令、Memory 与黑名单，**系统提示词与语言指令绝不写入本地会话持久化文件**（压缩提示词保持纯英文）。
 - **双占位符按需注入**：
   - `{{MEMORY}}`：注入 `32 KiB` 预算内的 `<memory_catalog>` 目录（仅含名称、类型、摘要、更新时间，正文按需走 `memory_search`）；
   - `{{BLACKLIST}}`：非空时注入 `4 KiB` 预算内的 `<command_blacklist>` 与反绕过规则，为空时零额外 Token 开销。
@@ -23,7 +23,7 @@
 - **语言无关持久化**：`messages.jsonl` 只保存语言无关的 `ToolOutcome`（`success` / `failed` / `skipped` / `rejected`）与原始参数，`aist sessions` 恢复时通过 `tools.DecodeInvocation` 按当前语言实时重渲染。
 - **消息链自愈校验**：发往模型前，`ModelMessages()` 自动校验 `assistant.tool_calls` 与 `role=tool` 配对（补齐中断缺失的占位结果、丢弃孤立/重复工具消息、合并相邻 `user` 消息），确保严格符合 OpenAI 工具调用协议。
 - **锚点增量启发式估算**：不引入庞大词表依赖，按自然语言与结构化文本（符号占比 ≥ 25% 或工具消息）分类赋权估算，并以最近一次上游返回的 `usage.total_tokens` 作为增量锚点（`TokenAnchor`）。
-- **整轮边界压缩（`planner.go`）**：按真实 `user` 消息切分 `Turn`，保护开头 `system` 消息与尾部 `keep_tokens`（最新一轮始终完整保留），将中间历史压缩为 `<compressed_history priority="high">` 合成消息并写入 `compaction` 事件。
+- **整轮边界压缩（`planner.go`）**：按真实 `user` 消息切分 `Turn`，保留尾部 `keep_tokens`（最新一轮始终完整保留），将中间历史压缩为 `<compressed_history priority="high">` 合成消息并写入 `compaction` 事件。
 
 ## 4. 工具结果头置格式与服务端防丢键截断（`internal/interactive` → `internal/server/audit.go`）
 

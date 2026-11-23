@@ -1,9 +1,10 @@
 package cmd
 
 import (
+	"bytes"
 	"context"
 	"errors"
-	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/llaoj/aist/internal/preferences"
 	"github.com/llaoj/aist/internal/state"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 )
 
 var rootCmd = &cobra.Command{
@@ -133,6 +135,10 @@ func Execute() error {
 }
 
 func runInteractiveMode(cmd *cobra.Command, initialQuestion string) {
+	runInteractiveSession(cmd, initialQuestion, nil)
+}
+
+func runInteractiveSession(cmd *cobra.Command, initialQuestion string, pipeReader io.Reader) {
 	application := app.FromContext(cmd.Context())
 	if application == nil {
 		return
@@ -143,6 +149,9 @@ func runInteractiveMode(cmd *cobra.Command, initialQuestion string) {
 	if err != nil {
 		color.Red("%s\n", err)
 		return
+	}
+	if pipeReader != nil {
+		session.SetPipeReader(pipeReader)
 	}
 
 	err = session.Run(initialQuestion)
@@ -156,7 +165,6 @@ func runInteractiveMode(cmd *cobra.Command, initialQuestion string) {
 }
 
 func printGoodbye(translator *i18n.I18n) {
-	fmt.Println(translator.T("interactive.session_saved"))
 	color.Green(translator.T("interactive.goodbye"))
 }
 
@@ -167,14 +175,49 @@ func runPipeMode(cmd *cobra.Command, initialQuestion string) {
 	}
 	translator := application.Translator()
 
+	pipeData, err := io.ReadAll(io.LimitReader(os.Stdin, interactive.MaxPipeDataBytes))
+	if err != nil {
+		color.Red(translator.T("error.general", interactive.RenderErrorMessage(translator, err)))
+		return
+	}
+
+	if tty := openControllingTTY(); tty != nil {
+		_ = os.Stdin.Close()
+		os.Stdin = tty
+		defer tty.Close()
+		runInteractiveSession(cmd, initialQuestion, bytes.NewReader(pipeData))
+		return
+	}
+
+	if strings.TrimSpace(initialQuestion) == "" {
+		color.Red(translator.T("error.general", interactive.RenderErrorMessage(translator, interactive.ErrPipeQuestionRequired)))
+		return
+	}
+
 	session, err := application.NewSession(interactive.ModePipe)
 	if err != nil {
 		color.Red("%s\n", err)
 		return
 	}
+	session.SetPipeReader(bytes.NewReader(pipeData))
 
 	err = session.RunPipeAnalysis(initialQuestion)
 	if err != nil {
 		color.Red(translator.T("error.general", interactive.RenderErrorMessage(translator, err)))
 	}
+}
+
+func openControllingTTY() *os.File {
+	if !term.IsTerminal(int(os.Stdout.Fd())) {
+		return nil
+	}
+	tty, err := os.OpenFile("/dev/tty", os.O_RDWR, 0)
+	if err != nil {
+		return nil
+	}
+	if !term.IsTerminal(int(tty.Fd())) {
+		_ = tty.Close()
+		return nil
+	}
+	return tty
 }

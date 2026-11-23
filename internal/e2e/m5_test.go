@@ -21,12 +21,10 @@ type scriptedModel struct {
 	index     int
 }
 
-func (m *scriptedModel) Name() string { return "scripted" }
-
 func (m *scriptedModel) Call(_ context.Context, req llm.CompletionRequest) (*llm.CompletionResponse, error) {
 	m.requests = append(m.requests, req)
 	if m.index >= len(m.responses) {
-		return &llm.CompletionResponse{Model: m.Name(), Content: "done"}, nil
+		return &llm.CompletionResponse{Model: "scripted", Content: "done"}, nil
 	}
 	response := m.responses[m.index]
 	m.index++
@@ -35,9 +33,9 @@ func (m *scriptedModel) Call(_ context.Context, req llm.CompletionRequest) (*llm
 
 type staticPrompts struct{}
 
-func (staticPrompts) Interactive() string  { return "interactive" }
-func (staticPrompts) PipeAnalysis() string { return "pipe" }
-func (staticPrompts) Compaction() string   { return "summary" }
+func (staticPrompts) System() string           { return "system" }
+func (staticPrompts) LanguageReminder() string { return "" }
+func (staticPrompts) Compaction() string       { return "summary" }
 func (staticPrompts) FollowUpLimit() string {
 	return "<system-reminder>MAXIMUM STEPS REACHED</system-reminder>"
 }
@@ -47,12 +45,12 @@ type interruptedInput struct{}
 func (interruptedInput) ReadInput() (string, error) { return "", interactive.ErrInterrupted }
 
 type fakeConfirmer struct {
-	requests  []interactive.ConfirmationRequest
+	types     []tools.CommandType
 	decisions []interactive.Decision
 }
 
-func (f *fakeConfirmer) ConfirmCommand(_ context.Context, req interactive.ConfirmationRequest) (interactive.Decision, error) {
-	f.requests = append(f.requests, req)
+func (f *fakeConfirmer) ConfirmCommand(_ context.Context, cmdType tools.CommandType) (interactive.Decision, error) {
+	f.types = append(f.types, cmdType)
 	if len(f.decisions) == 0 {
 		return interactive.DecisionApprove, nil
 	}
@@ -200,8 +198,8 @@ func TestM5TargetRouting(t *testing.T) {
 			t.Fatalf("tool result missing %q: %s", want, result)
 		}
 	}
-	if len(h.confirm.requests) != 1 || len(h.confirm.requests[0].Targets) != 1 || h.confirm.requests[0].Targets[0] != "web1" {
-		t.Fatalf("confirmations = %+v", h.confirm.requests)
+	if len(h.confirm.types) != 1 || h.confirm.types[0] != tools.CommandTypeQuery {
+		t.Fatalf("confirmations = %+v", h.confirm.types)
 	}
 	calls, err := os.ReadFile(marker)
 	if err != nil || !strings.Contains(string(calls), "web1") {
@@ -241,8 +239,8 @@ func TestM5InvalidTargetIsNotExecuted(t *testing.T) {
 	if _, err := os.Stat(marker); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("invalid target reached executor, marker err=%v", err)
 	}
-	if len(h.confirm.requests) != 0 {
-		t.Fatalf("invalid target was confirmed: %+v", h.confirm.requests)
+	if len(h.confirm.types) != 0 {
+		t.Fatalf("invalid target was confirmed: %+v", h.confirm.types)
 	}
 }
 
@@ -258,21 +256,17 @@ func TestM5QueryAndModifyConfirmations(t *testing.T) {
 	}, nil)
 	h.run(t)
 
-	if len(h.confirm.requests) != 3 {
-		t.Fatalf("confirmations = %+v", h.confirm.requests)
+	if len(h.confirm.types) != 3 {
+		t.Fatalf("confirmations = %+v", h.confirm.types)
 	}
-	want := []struct {
-		cmdType tools.CommandType
-		target  string
-	}{
-		{cmdType: tools.CommandTypeQuery, target: "web1"},
-		{cmdType: tools.CommandTypeQuery, target: "web2"},
-		{cmdType: tools.CommandTypeModify, target: "web1"},
+	wantTypes := []tools.CommandType{
+		tools.CommandTypeQuery,
+		tools.CommandTypeQuery,
+		tools.CommandTypeModify,
 	}
-	for i, item := range want {
-		req := h.confirm.requests[i]
-		if req.Type != item.cmdType || req.UniqueTargets != 1 || len(req.Targets) != 1 || req.Targets[0] != item.target {
-			t.Fatalf("confirmation %d = %+v", i, req)
+	for i, wantType := range wantTypes {
+		if h.confirm.types[i] != wantType {
+			t.Fatalf("confirmation %d = %v, want %v", i, h.confirm.types[i], wantType)
 		}
 	}
 	for _, id := range []string{"q1", "q2", "m1"} {

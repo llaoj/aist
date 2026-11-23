@@ -176,11 +176,6 @@ func (e *Editor) prepareLocalNewFile(ctx context.Context, tgt target.Target, loc
 }
 
 func (e *Editor) buildChange(tgt target.Target, inspected inspectedFile, req EditRequest, useSudo bool) (*Change, error) {
-	diffHeaderPath := inspected.Path
-	if !tgt.IsLocal() {
-		diffHeaderPath = fmt.Sprintf("%s:%s", tgt.String(), inspected.Path)
-	}
-
 	if !inspected.Exists {
 		if strings.TrimSpace(req.OldContent) != "" {
 			return nil, fmt.Errorf("old_content must be empty when creating a new file")
@@ -190,7 +185,7 @@ func (e *Editor) buildChange(tgt target.Target, inspected inspectedFile, req Edi
 			Target:  tgt,
 			Path:    inspected.Path,
 			Reason:  strings.TrimSpace(req.Reason),
-			Diff:    renderDiff(diffHeaderPath, nil, updated, "", req.NewContent, 0),
+			Diff:    renderFileDiff(tgt, inspected.Path, nil, updated),
 			Updated: updated,
 			Perm:    defaultFileMode,
 			Exists:  false,
@@ -234,7 +229,7 @@ func (e *Editor) buildChange(tgt target.Target, inspected inspectedFile, req Edi
 		Target:       tgt,
 		Path:         inspected.Path,
 		Reason:       strings.TrimSpace(req.Reason),
-		Diff:         renderDiff(diffHeaderPath, original, updated, req.OldContent, req.NewContent, index),
+		Diff:         renderFileDiff(tgt, inspected.Path, original, updated),
 		Original:     original,
 		OriginalHash: util.SHA256Hex(original),
 		Updated:      updated,

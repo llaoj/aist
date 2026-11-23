@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/llaoj/aist/internal/auth"
@@ -58,7 +59,6 @@ type runtime struct {
 	serverModel       *llm.ServerModel
 	commandGuard      *commandguard.Guard
 	memoryManager     *memory.Manager
-	memoryReport      memory.Report
 	fileEditor        *fileedit.Editor
 	filePrompter      fileEditPrompter
 	commandRunner     executor.CommandRunner
@@ -178,9 +178,13 @@ func (a *App) NewSession(mode interactive.Mode) (*interactive.Session, error) {
 // session and prepares the interactive client around it.
 func (a *App) NewSessionWithID(id string, mode interactive.Mode) (*interactive.Session, error) {
 	cfg := a.settings
-	sessionManager, err := a.runtime.newSessionManager(cfg, id, mode)
+	sessionManager, err := a.runtime.newSessionManager(cfg, id)
 	if err != nil {
 		return nil, err
+	}
+	var pipeReader io.Reader
+	if mode == interactive.ModePipe {
+		pipeReader = os.Stdin
 	}
 	translator := a.runtime.translator
 	return interactive.NewSession(interactive.SessionOptions{
@@ -198,7 +202,7 @@ func (a *App) NewSessionWithID(id string, mode interactive.Mode) (*interactive.S
 		Renderer:             terminalRenderer{translator: translator},
 		CommandConfirmer:     terminalConfirmer{translator: translator},
 		ShellCommandExecutor: shellCommandExecutor{commandRunner: a.runtime.commandRunner},
-		PipeReader:           os.Stdin,
+		PipeReader:           pipeReader,
 		Tools:                toolDefinitions(),
 	}), nil
 }

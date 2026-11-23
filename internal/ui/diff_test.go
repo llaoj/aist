@@ -49,3 +49,19 @@ func TestColorizeDiffEmpty(t *testing.T) {
 		t.Fatalf("ColorizeDiff(%q) = %q", "", got)
 	}
 }
+
+func TestColorizeDiffWithoutHunkHeaderTreatsRemovedDashLineAsDeletion(t *testing.T) {
+	old := color.NoColor
+	color.NoColor = false
+	defer func() { color.NoColor = old }()
+
+	diff := "--- a.sql\n+++ a.sql\n--- old sql comment\n+-- new sql comment\n"
+	out := ColorizeDiff(diff)
+	lines := strings.Split(strings.TrimSuffix(out, "\n"), "\n")
+	if len(lines) != 4 {
+		t.Fatalf("lines = %d, want 4", len(lines))
+	}
+	if !strings.HasPrefix(lines[2], "\x1b[31m--- old sql comment") {
+		t.Fatalf("removed SQL comment mistaken for file header: %q", lines[2])
+	}
+}

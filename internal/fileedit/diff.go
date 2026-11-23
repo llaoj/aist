@@ -3,12 +3,28 @@ package fileedit
 import (
 	"fmt"
 	"strings"
+
+	"github.com/llaoj/aist/internal/target"
 )
 
-func renderDiff(path string, original, updated []byte, oldContent, newContent string, offset int) string {
-	oldLines := splitBlock(oldContent)
-	newLines := splitBlock(newContent)
+const maxSurroundingLines = 3
 
+func RenderSnippetDiff(tgt target.Target, path, oldContent, newContent string) string {
+	return renderDiff(diffHeaderPath(tgt, path), oldContent, newContent, false)
+}
+
+func renderFileDiff(tgt target.Target, path string, original, updated []byte) string {
+	return renderDiff(diffHeaderPath(tgt, path), string(original), string(updated), true)
+}
+
+func diffHeaderPath(tgt target.Target, path string) string {
+	if !tgt.IsLocal() {
+		return tgt.String() + ":" + path
+	}
+	return path
+}
+
+func renderDiff(path, oldText, newText string, showLineNumbers bool) string {
 	var sb strings.Builder
 	sb.WriteString("--- ")
 	sb.WriteString(path)
@@ -16,43 +32,50 @@ func renderDiff(path string, original, updated []byte, oldContent, newContent st
 	sb.WriteString(path)
 	sb.WriteString("\n")
 
-	if oldContent == "" {
+	if oldText == "" {
+		newLines := splitBlock(newText)
 		fmt.Fprintf(&sb, "@@ -0,0 +1,%d @@\n", len(newLines))
-		for _, line := range newLines {
-			sb.WriteString("+")
-			sb.WriteString(line)
-			sb.WriteString("\n")
-		}
+		writePrefixedLines(&sb, "+", newLines)
 		return sb.String()
 	}
 
-	before := contextBefore(original, offset, 3)
-	after := contextAfter(original, offset+len(oldContent), 3)
-	startLine := 1 + strings.Count(string(original[:offset]), "\n") - len(before)
-	oldCount := len(before) + len(oldLines) + len(after)
-	newCount := len(before) + len(newLines) + len(after)
-	fmt.Fprintf(&sb, "@@ -%d,%d +%d,%d @@\n", startLine, oldCount, startLine, newCount)
+	oldLines := splitBlock(oldText)
+	newLines := splitBlock(newText)
 
-	for _, line := range before {
-		sb.WriteString(" ")
-		sb.WriteString(line)
-		sb.WriteString("\n")
+	prefixLen := commonPrefixLen(oldLines, newLines)
+	suffixLen := commonSuffixLen(oldLines[prefixLen:], newLines[prefixLen:])
+
+	oldTrailingNewline := strings.HasSuffix(oldText, "\n")
+	newTrailingNewline := strings.HasSuffix(newText, "\n")
+	if oldTrailingNewline != newTrailingNewline {
+		suffixLen = 0
+		if prefixLen == len(oldLines) && prefixLen == len(newLines) && prefixLen > 0 {
+			prefixLen--
+		}
 	}
-	for _, line := range oldLines {
-		sb.WriteString("-")
-		sb.WriteString(line)
-		sb.WriteString("\n")
+
+	removed := oldLines[prefixLen : len(oldLines)-suffixLen]
+	added := newLines[prefixLen : len(newLines)-suffixLen]
+	before := tailLines(oldLines[:prefixLen], maxSurroundingLines)
+	after := headLines(oldLines[len(oldLines)-suffixLen:], maxSurroundingLines)
+
+	if showLineNumbers {
+		startLine := 1 + prefixLen - len(before)
+		oldCount := len(before) + len(removed) + len(after)
+		newCount := len(before) + len(added) + len(after)
+		fmt.Fprintf(&sb, "@@ -%d,%d +%d,%d @@\n", startLine, oldCount, startLine, newCount)
 	}
-	for _, line := range newLines {
-		sb.WriteString("+")
-		sb.WriteString(line)
-		sb.WriteString("\n")
+
+	writePrefixedLines(&sb, " ", before)
+	writePrefixedLines(&sb, "-", removed)
+	if oldTrailingNewline != newTrailingNewline && len(removed) > 0 && !oldTrailingNewline {
+		sb.WriteString("\\ No newline at end of file\n")
 	}
-	for _, line := range after {
-		sb.WriteString(" ")
-		sb.WriteString(line)
-		sb.WriteString("\n")
+	writePrefixedLines(&sb, "+", added)
+	if oldTrailingNewline != newTrailingNewline && len(added) > 0 && !newTrailingNewline {
+		sb.WriteString("\\ No newline at end of file\n")
 	}
+	writePrefixedLines(&sb, " ", after)
 	return sb.String()
 }
 
@@ -64,33 +87,44 @@ func splitBlock(block string) []string {
 	return strings.Split(block, "\n")
 }
 
-func contextBefore(original []byte, offset, count int) []string {
-	if offset <= 0 || count <= 0 {
-		return nil
+func commonPrefixLen(a, b []string) int {
+	limit := min(len(a), len(b))
+	for i := 0; i < limit; i++ {
+		if a[i] != b[i] {
+			return i
+		}
 	}
-	prefix := strings.TrimSuffix(string(original[:offset]), "\n")
-	if prefix == "" {
-		return nil
-	}
-	lines := strings.Split(prefix, "\n")
-	if len(lines) > count {
-		lines = lines[len(lines)-count:]
-	}
-	return lines
+	return limit
 }
 
-func contextAfter(original []byte, offset, count int) []string {
-	if offset >= len(original) || count <= 0 {
-		return nil
+func commonSuffixLen(a, b []string) int {
+	limit := min(len(a), len(b))
+	for i := 0; i < limit; i++ {
+		if a[len(a)-1-i] != b[len(b)-1-i] {
+			return i
+		}
 	}
-	rest := string(original[offset:])
-	rest = strings.TrimPrefix(rest, "\n")
-	if rest == "" {
-		return nil
+	return limit
+}
+
+func tailLines(lines []string, count int) []string {
+	if len(lines) <= count {
+		return lines
 	}
-	lines := strings.Split(rest, "\n")
-	if len(lines) > count {
-		lines = lines[:count]
+	return lines[len(lines)-count:]
+}
+
+func headLines(lines []string, count int) []string {
+	if len(lines) <= count {
+		return lines
 	}
-	return lines
+	return lines[:count]
+}
+
+func writePrefixedLines(sb *strings.Builder, prefix string, lines []string) {
+	for _, line := range lines {
+		sb.WriteString(prefix)
+		sb.WriteString(line)
+		sb.WriteString("\n")
+	}
 }

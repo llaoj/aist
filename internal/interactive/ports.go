@@ -24,10 +24,10 @@ type InputReader interface {
 	ReadInput() (string, error)
 }
 
-// PromptSet supplies the system prompts.
+// PromptSet supplies the runtime system, language, compaction and follow-up prompts.
 type PromptSet interface {
-	Interactive() string
-	PipeAnalysis() string
+	System() string
+	LanguageReminder() string
 	Compaction() string
 	FollowUpLimit() string
 }
@@ -63,19 +63,10 @@ const (
 	DecisionRejectRemaining
 )
 
-// ConfirmationRequest describes the command being confirmed.
-type ConfirmationRequest struct {
-	Type          tools.CommandType
-	UniqueTargets int
-	Targets       []string
-	// Invocation is the tool-owned, localized invocation text.
-	Invocation string
-}
-
 // CommandConfirmer asks the user to approve a command. Implementations own the
 // prompt wording; the session only receives the decision.
 type CommandConfirmer interface {
-	ConfirmCommand(ctx context.Context, req ConfirmationRequest) (Decision, error)
+	ConfirmCommand(ctx context.Context, cmdType tools.CommandType) (Decision, error)
 }
 
 // MemoryManager performs Memory search and save operations for tool calls.
@@ -109,7 +100,7 @@ const (
 type Renderer interface {
 	RenderWelcome(version string)
 	RenderUserMessage(text string)
-	RenderAssistantMessage(model, content string)
+	RenderAssistantMessage(content string)
 	RenderShellCommand(stepIndex string, cmd tools.ShellCommand)
 	RenderFileChange(change *fileedit.Change)
 	RenderExecutionOutput(text string)
@@ -126,3 +117,7 @@ type Renderer interface {
 
 // ErrInterrupted means the user cancelled an input or confirmation prompt.
 var ErrInterrupted = errors.New("interrupted by user")
+
+// ErrPipeQuestionRequired means piped input was invoked without a controlling
+// terminal and without an explicit question argument.
+var ErrPipeQuestionRequired = errors.New("question is required in non-interactive pipe mode")

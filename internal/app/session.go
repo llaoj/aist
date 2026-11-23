@@ -34,7 +34,7 @@ func (r terminalRenderer) RenderUserMessage(text string) {
 	ui.PrintRegionEnd()
 }
 
-func (r terminalRenderer) RenderAssistantMessage(model, content string) {
+func (r terminalRenderer) RenderAssistantMessage(content string) {
 	if content == "" {
 		return
 	}
@@ -174,7 +174,7 @@ type terminalConfirmer struct {
 	promptFn   func(prompt string, translator *i18n.I18n) (ui.ConfirmDecision, error)
 }
 
-func (c terminalConfirmer) ConfirmCommand(ctx context.Context, req interactive.ConfirmationRequest) (interactive.Decision, error) {
+func (c terminalConfirmer) ConfirmCommand(ctx context.Context, cmdType tools.CommandType) (interactive.Decision, error) {
 	if err := ctx.Err(); err != nil {
 		return interactive.DecisionSkip, err
 	}
@@ -187,7 +187,7 @@ func (c terminalConfirmer) ConfirmCommand(ctx context.Context, req interactive.C
 		return decision, nil
 	}
 
-	if req.Type == tools.CommandTypeModify {
+	if cmdType == tools.CommandTypeModify {
 		decision, err = c.ask(c.translator.T("executor.modify_warning"))
 		if err != nil {
 			return decision, err

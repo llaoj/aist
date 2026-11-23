@@ -1,10 +1,6 @@
 package commandguard
 
-import (
-	"testing"
-
-	"mvdan.cc/sh/v3/syntax"
-)
+import "testing"
 
 func TestCheckBlacklist(t *testing.T) {
 	guard := New([]string{"rm *", "dd *", "kubectl delete *", "shutdown"})
@@ -164,32 +160,6 @@ func TestBlacklistWinsOverTUI(t *testing.T) {
 	block := guard.Check("sudo rm -rf / && vim /etc/hosts")
 	if block.Kind != KindBlacklist || block.Pattern != "rm *" {
 		t.Fatalf("block = %+v", block)
-	}
-}
-
-func TestParseExtractsRedirects(t *testing.T) {
-	cases := []struct {
-		name    string
-		command string
-		target  string
-		static  bool
-		op      syntax.RedirOperator
-	}{
-		{"stdout", "cmd > /tmp/x", "/tmp/x", true, syntax.RdrOut},
-		{"append", "cmd >> /tmp/x", "/tmp/x", true, syntax.AppOut},
-		{"all output", "cmd &> /tmp/x", "/tmp/x", true, syntax.RdrAll},
-		{"dynamic target", `cmd > "$FILE"`, "", false, syntax.RdrOut},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			parsed := parseCommandLine(tc.command)
-			if len(parsed.redirects) != 1 {
-				t.Fatalf("redirects = %+v", parsed.redirects)
-			}
-			if parsed.redirects[0].target != tc.target || parsed.redirects[0].static != tc.static || parsed.redirects[0].op != tc.op {
-				t.Fatalf("redirect = %+v", parsed.redirects[0])
-			}
-		})
 	}
 }
 

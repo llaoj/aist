@@ -28,9 +28,9 @@ Wait-free autonomous loop within each turn:
 > [!NOTE]
 > Note that `aist "question"` on an interactive terminal enters interactive mode after answering your initial question so you can immediately follow up. Press `Ctrl+C` whenever you are done.
 
-## 2. Pipe Analysis Mode (Read-Only)
+## 2. Pipe Mode
 
-Pipe command output, logs, stack traces, or config files into `aist`:
+Like `less` or `fzf`, you can pipe command output, logs, stack traces, or config diffs directly into `aist`:
 
 ```bash
 kubectl describe pod api-7d9f8b-xk2lp -n prod | aist "why is this pod CrashLoopBackOff?"
@@ -39,9 +39,9 @@ git diff HEAD~1 | aist "spot any risky production config changes"
 ```
 
 Key characteristics of Pipe Mode:
-- **Strictly read-only**: No tools (`shell_execute`, `file_edit`, etc.) are attached to pipe-mode requests — AIST analyzes the piped stream and prints structured findings directly to stdout, then exits.
+- **Interactive in a terminal (`/dev/tty`)**: When stdout is a terminal and `/dev/tty` is available, `aist` drains the piped input first and reattaches to `/dev/tty` for a full interactive session — running immediately when a question is provided, or waiting at the prompt for your question when omitted (`cmd | aist`) so no tokens are wasted guessing your intent.
+- **Explicit question required when redirected**: When stdout is redirected (e.g. `journalctl -n 200 | aist "summarize the root cause" > report.md`) or no TTY exists (cron/CI), an explicit question argument is required; `aist` then omits tools, prints a clean read-only response once, and exits.
 - **Generous input budget**: Reads up to **1.6 MB** from stdin and sends up to **240,000 characters** (preserving head and tail if truncated) alongside your local Memory catalog.
-- **Optional prompt**: Omitting the question (`cmd | aist`) triggers general anomaly and root-cause analysis on the piped data.
 
 ## 3. Command Execution Environment & PTY Support
 

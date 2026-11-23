@@ -107,11 +107,6 @@ func NewOpenAICompatibleModel(spec ProviderSpec) (*OpenAICompatibleModel, error)
 	}, nil
 }
 
-// Name returns the provider/model identifier.
-func (o *OpenAICompatibleModel) Name() string {
-	return o.name
-}
-
 // Call sends one Chat Completions request and normalizes the response.
 func (o *OpenAICompatibleModel) Call(ctx context.Context, req CompletionRequest) (*CompletionResponse, error) {
 	body, err := o.buildRequestBody(req)

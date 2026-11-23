@@ -91,15 +91,11 @@ type FileStatus struct {
 // Report describes the result of a Memory loading pass. It is data only;
 // rendering belongs to the CLI.
 type Report struct {
-	Files            []FileStatus
-	Loaded           int
-	Bytes            int
-	MaxBytes         int
-	Injection        InjectionMode
-	CatalogEntries   int
-	CatalogBytes     int
-	CatalogTruncated bool
-	Warnings         []string
+	Files    []FileStatus
+	Loaded   int
+	Bytes    int
+	MaxBytes int
+	Warnings []string
 }
 
 // LoadResult is one loader pass.

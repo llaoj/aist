@@ -1,9 +1,8 @@
 package session
 
-// PlanInput describes the current model view split into protected head, prior
-// summary and raw messages after the latest compaction.
+// PlanInput describes the current model view split into prior summary and raw
+// messages after the latest compaction.
 type PlanInput struct {
-	Head             []Message
 	Summary          *Message
 	PriorSummary     []Message
 	RetainTailTokens int
@@ -18,11 +17,9 @@ type Turn struct {
 
 // Plan is the result of boundary planning.
 type Plan struct {
-	Head      []Message
-	Middle    []Message
-	Tail      []Message
-	TailStart int
-	Feasible  bool
+	Middle   []Message
+	Tail     []Message
+	Feasible bool
 }
 
 // SplitTurns splits raw messages at real user messages. Messages before the
@@ -81,7 +78,7 @@ func TailStartTurn(turns []Turn, keepTokens int, estimator TokenEstimator) int {
 	return tailStartTurn
 }
 
-// PlanCompaction computes protected head, compressible middle and live tail.
+// PlanCompaction computes compressible middle and live tail.
 func PlanCompaction(input PlanInput, estimator TokenEstimator) Plan {
 	if estimator == nil {
 		estimator = HeuristicEstimator{}
@@ -100,7 +97,7 @@ func PlanCompaction(input PlanInput, estimator TokenEstimator) Plan {
 		if len(middle) == 0 {
 			return Plan{}
 		}
-		return Plan{Head: input.Head, Middle: middle, Feasible: true}
+		return Plan{Middle: middle, Feasible: true}
 	}
 
 	tailStartTurn := TailStartTurn(turns, input.RetainTailTokens, estimator)
@@ -121,10 +118,8 @@ func PlanCompaction(input PlanInput, estimator TokenEstimator) Plan {
 	}
 
 	return Plan{
-		Head:      input.Head,
-		Middle:    middle,
-		Tail:      input.PriorSummary[tailStart:],
-		TailStart: tailStart,
-		Feasible:  true,
+		Middle:   middle,
+		Tail:     input.PriorSummary[tailStart:],
+		Feasible: true,
 	}
 }

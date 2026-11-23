@@ -324,6 +324,29 @@ func TestRepositoryConcurrentAppendKeepsWholeEvents(t *testing.T) {
 	}
 }
 
+func TestManagerDoesNotPersistEmptySession(t *testing.T) {
+	repo, root := newRepo(t)
+	manager := session.NewManager(session.ManagerOptions{
+		Repository: repo,
+		Settings:   session.Settings{CompactionEnabled: false},
+	})
+	ctx := context.Background()
+	created, err := manager.Create(ctx)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	summaries, err := repo.List(ctx)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(summaries) != 0 {
+		t.Fatalf("summaries = %+v, want empty", summaries)
+	}
+	if _, err := os.Stat(filepath.Join(root, "sessions", created.ID)); !os.IsNotExist(err) {
+		t.Fatalf("empty session dir should not exist, err = %v", err)
+	}
+}
+
 func TestServiceRetainsOnlyNewestSessions(t *testing.T) {
 	repo, _ := newRepo(t)
 	manager := session.NewManager(session.ManagerOptions{
@@ -335,8 +358,11 @@ func TestServiceRetainsOnlyNewestSessions(t *testing.T) {
 	})
 	ctx := context.Background()
 	for i := 0; i < 3; i++ {
-		if _, err := manager.Create(ctx, "system"); err != nil {
+		if _, err := manager.Create(ctx); err != nil {
 			t.Fatalf("Create %d: %v", i, err)
+		}
+		if _, err := manager.AppendUser(ctx, fmt.Sprintf("question-%d", i)); err != nil {
+			t.Fatalf("AppendUser %d: %v", i, err)
 		}
 	}
 	summaries, err := repo.List(ctx)

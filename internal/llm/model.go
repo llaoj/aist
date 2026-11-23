@@ -64,7 +64,6 @@ type CompletionResponse struct {
 
 // Model is the single entry point for an LLM wire protocol.
 type Model interface {
-	Name() string
 	Call(ctx context.Context, req CompletionRequest) (*CompletionResponse, error)
 }
 

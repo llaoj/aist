@@ -10,7 +10,7 @@ type noopRenderer struct{}
 
 func (noopRenderer) RenderWelcome(string)                          {}
 func (noopRenderer) RenderUserMessage(string)                      {}
-func (noopRenderer) RenderAssistantMessage(string, string)         {}
+func (noopRenderer) RenderAssistantMessage(string)                 {}
 func (noopRenderer) RenderShellCommand(string, tools.ShellCommand) {}
 func (noopRenderer) RenderFileChange(*fileedit.Change)             {}
 func (noopRenderer) RenderExecutionOutput(string)                  {}

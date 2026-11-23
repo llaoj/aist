@@ -21,15 +21,8 @@ type command struct {
 	words []word
 }
 
-type redirectTarget struct {
-	op     syntax.RedirOperator
-	target string
-	static bool
-}
-
 type parsed struct {
-	commands  []command
-	redirects []redirectTarget
+	commands []command
 }
 
 func parseCommandLine(line string) parsed {
@@ -52,11 +45,8 @@ func (p *parsed) addScript(script string, depth int) {
 		return
 	}
 	syntax.Walk(file, func(node syntax.Node) bool {
-		switch n := node.(type) {
-		case *syntax.CallExpr:
-			p.addCall(n, depth)
-		case *syntax.Redirect:
-			p.addRedirect(n)
+		if call, isCall := node.(*syntax.CallExpr); isCall {
+			p.addCall(call, depth)
 		}
 		return true
 	})
@@ -90,19 +80,6 @@ func (p *parsed) addCall(call *syntax.CallExpr, depth int) {
 	if inner, ok := unwrapCommand(cmd.words); ok {
 		p.addNested(inner, depth)
 	}
-}
-
-func (p *parsed) addRedirect(redirect *syntax.Redirect) {
-	switch redirect.Op {
-	case syntax.Hdoc, syntax.DashHdoc, syntax.WordHdoc, syntax.DplIn, syntax.DplOut:
-		return
-	}
-	target, ok := staticWord(redirect.Word)
-	p.redirects = append(p.redirects, redirectTarget{
-		op:     redirect.Op,
-		target: target,
-		static: ok,
-	})
 }
 
 func (p *parsed) addNested(words []word, depth int) {

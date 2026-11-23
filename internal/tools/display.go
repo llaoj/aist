@@ -24,7 +24,6 @@ const (
 // localized text: the session persists only the structured status.
 type ToolDisplay interface {
 	ToolName() string
-	LocalizedName(t Translator) string
 	FormatInvocation(t Translator) string
 	FormatResult(outcome ToolOutcome, t Translator) string
 }
@@ -71,11 +70,6 @@ type UnknownToolDisplay struct {
 
 // ToolName returns the raw stored tool name.
 func (u UnknownToolDisplay) ToolName() string { return u.Tool }
-
-// Name returns a localized generic label.
-func (u UnknownToolDisplay) LocalizedName(t Translator) string {
-	return t.T("tool.name.unknown")
-}
 
 // FormatInvocation describes an unknown tool without guessing its arguments.
 func (u UnknownToolDisplay) FormatInvocation(t Translator) string {

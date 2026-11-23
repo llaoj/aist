@@ -8,7 +8,6 @@ var EnglishMessages = map[string]string{
 	"interactive.input_prompt":          "User:",
 	"interactive.input_key_hint":        "Enter to send · Ctrl+C to exit",
 	"interactive.goodbye":               "Goodbye!",
-	"interactive.session_saved":         "Session saved. Run aist sessions to resume.",
 	"interactive.thinking":              "Thinking",
 	"interactive.execution_output":      "Execution output",
 	"interactive.user_label":            "User",
@@ -112,12 +111,12 @@ var EnglishMessages = map[string]string{
 	"sessions.compacted":      "Context compacted",
 	"sessions.list_failed":    "Failed to read sessions: %v",
 
+	// Pipe mode messages
+	"pipe.input_loaded":        "Loaded piped input (%d lines)",
+	"pipe.input_loaded_prompt": "Loaded piped input (%d lines). Enter your question.",
+	"pipe.question_required":   `a question is required in non-interactive pipe mode, e.g. cmd | aist "your question"`,
+
 	// Tool display messages
-	"tool.name.shell_execute":   "Shell command",
-	"tool.name.memory_search":   "Memory search",
-	"tool.name.memory_save":     "Memory save",
-	"tool.name.file_edit":       "File edit",
-	"tool.name.unknown":         "Unknown tool",
 	"tool.invoke.shell_execute": "[%s] $ %s",
 	"tool.invoke.memory_search": "Memory search %q",
 	"tool.invoke.memory_save":   "Memory save %q (%s)",

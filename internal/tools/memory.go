@@ -154,11 +154,6 @@ func ParseMemorySaveArgs(raw string) (MemorySaveArgs, error) {
 // ToolName returns the canonical tool name.
 func (a MemorySearchArgs) ToolName() string { return ToolMemorySearch }
 
-// LocalizedName returns the localized tool name.
-func (a MemorySearchArgs) LocalizedName(t Translator) string {
-	return t.T("tool.name.memory_search")
-}
-
 // FormatInvocation renders the Memory search query.
 func (a MemorySearchArgs) FormatInvocation(t Translator) string {
 	return t.T("tool.invoke.memory_search", a.Query)
@@ -171,11 +166,6 @@ func (a MemorySearchArgs) FormatResult(outcome ToolOutcome, t Translator) string
 
 // ToolName returns the canonical tool name.
 func (a MemorySaveArgs) ToolName() string { return ToolMemorySave }
-
-// LocalizedName returns the localized tool name.
-func (a MemorySaveArgs) LocalizedName(t Translator) string {
-	return t.T("tool.name.memory_save")
-}
 
 // FormatInvocation renders the Memory name and save mode.
 func (a MemorySaveArgs) FormatInvocation(t Translator) string {

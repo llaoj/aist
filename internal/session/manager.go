@@ -64,6 +64,7 @@ type Manager struct {
 	ids       IDGenerator
 	opts      Settings
 	session   *Session
+	persisted bool
 
 	onCompactionError func(error)
 	onPruneError      func(error)
@@ -96,8 +97,12 @@ func NewManager(opts ManagerOptions) *Manager {
 	}
 }
 
-// Create starts a new persisted session with an optional system prompt.
-func (s *Manager) Create(ctx context.Context, systemPrompt string) (*Session, error) {
+// Create initializes a new session in memory; storage is deferred until the
+// first message so unused sessions leave no empty records on disk.
+func (s *Manager) Create(ctx context.Context) (*Session, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -109,16 +114,8 @@ func (s *Manager) Create(ctx context.Context, systemPrompt string) (*Session, er
 		UpdatedAt:     now,
 		SchemaVersion: 1,
 	}
-	if err := s.repo.Create(ctx, created); err != nil {
-		return nil, err
-	}
 	s.session = created
-	if strings.TrimSpace(systemPrompt) != "" {
-		if _, err := s.appendMessageLocked(ctx, RoleSystem, systemPrompt, "", nil, "", nil, ""); err != nil {
-			return nil, err
-		}
-	}
-	s.pruneSessions(ctx)
+	s.persisted = false
 	return s.session, nil
 }
 
@@ -132,6 +129,7 @@ func (s *Manager) Load(ctx context.Context, id string) (*Session, error) {
 		return nil, err
 	}
 	s.session = loaded
+	s.persisted = true
 	s.session.UpdatedAt = s.clock.Now()
 	if err := s.repo.SaveMetadata(ctx, s.session); err != nil {
 		return nil, err
@@ -200,6 +198,17 @@ func (s *Manager) appendMessageLocked(ctx context.Context, role Role, content, t
 		Usage:       usage,
 		ToolOutcome: outcome,
 	}
+	if !s.persisted {
+		s.session.Messages = append(s.session.Messages, message)
+		s.session.UpdatedAt = now
+		if err := s.repo.Create(ctx, s.session); err != nil {
+			s.session.Messages = s.session.Messages[:len(s.session.Messages)-1]
+			return Message{}, err
+		}
+		s.persisted = true
+		s.pruneSessions(ctx)
+		return message, nil
+	}
 	if err := s.repo.AppendMessage(ctx, s.session.ID, message); err != nil {
 		return Message{}, err
 	}
@@ -247,7 +256,6 @@ func (s *Manager) CompactIfNeeded(ctx context.Context) error {
 	}
 
 	plan := PlanCompaction(PlanInput{
-		Head:             s.session.HeadMessages(),
 		Summary:          priorSummaryMessage,
 		PriorSummary:     s.session.RawMessagesAfterCompaction(),
 		RetainTailTokens: s.opts.RetainTailTokens,
@@ -305,8 +313,7 @@ func (s *Manager) CompactIfNeeded(ctx context.Context) error {
 		compaction.CoversToSeq = middle[len(middle)-1].Seq
 	}
 
-	afterView := make([]Message, 0, len(plan.Head)+1+len(plan.Tail))
-	afterView = append(afterView, plan.Head...)
+	afterView := make([]Message, 0, 1+len(plan.Tail))
 	afterView = append(afterView, Message{Role: RoleUser, Content: summaryText})
 	afterView = append(afterView, plan.Tail...)
 	compaction.TokensAfter = s.estimate.EstimateMessages(afterView)
@@ -335,6 +342,9 @@ func (s *Manager) RecordResponseUsage(ctx context.Context, usage *Usage) error {
 	if usage == nil || usage.WithTotal().TotalTokens == 0 {
 		s.session.TokenAnchor = TokenAnchor{}
 		s.session.UpdatedAt = s.clock.Now()
+		if !s.persisted {
+			return nil
+		}
 		return s.repo.SaveMetadata(ctx, s.session)
 	}
 
@@ -346,11 +356,39 @@ func (s *Manager) RecordResponseUsage(ctx context.Context, usage *Usage) error {
 	}
 	s.session.TokenUsage.Add(normalized)
 	s.session.UpdatedAt = s.clock.Now()
+	if !s.persisted {
+		return nil
+	}
 	if err := s.repo.SaveMetadata(ctx, s.session); err != nil {
 		return err
 	}
 	s.pruneSessions(ctx)
 	return nil
+}
+
+// SetTitle assigns an explicit title to the active session.
+func (s *Manager) SetTitle(ctx context.Context, title string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.session == nil {
+		return errors.New("no active session")
+	}
+	trimmed := truncateRunes(strings.TrimSpace(title), s.opts.TitleMaxRunes)
+	if trimmed == "" {
+		return nil
+	}
+	s.session.Title = trimmed
+	s.session.UpdatedAt = s.clock.Now()
+	if !s.persisted {
+		return nil
+	}
+	return s.repo.SaveMetadata(ctx, s.session)
+}
+
+// SetDerivedTitle derives a compact title from text and assigns it to the active session.
+func (s *Manager) SetDerivedTitle(ctx context.Context, text string) error {
+	return s.SetTitle(ctx, deriveTitle(text, s.opts.TitleMaxRunes))
 }
 
 // EnsureTitle derives and persists a title once from the first user message.
@@ -373,6 +411,9 @@ func (s *Manager) EnsureTitle(ctx context.Context) error {
 
 	s.session.Title = title
 	s.session.UpdatedAt = s.clock.Now()
+	if !s.persisted {
+		return nil
+	}
 	if err := s.repo.SaveMetadata(ctx, s.session); err != nil {
 		return err
 	}

@@ -9,8 +9,8 @@ import (
 
 // Hooks receives notifications around model calls.
 type Hooks interface {
-	BeforeCall(model string, cancel context.CancelFunc)
-	AfterCall(model string, err error)
+	BeforeCall(cancel context.CancelFunc)
+	AfterCall()
 }
 
 const (
@@ -75,19 +75,16 @@ func NewServerModel(opts ServerModelOptions) (*ServerModel, error) {
 	}, nil
 }
 
-// Name returns the logical model name used by hooks and diagnostics.
-func (m *ServerModel) Name() string { return "server" }
-
 // Call sends one request to the server proxy, retrying transient failures.
 func (m *ServerModel) Call(ctx context.Context, req CompletionRequest) (resp *CompletionResponse, err error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	if m.hooks != nil {
-		m.hooks.BeforeCall(m.Name(), cancel)
+		m.hooks.BeforeCall(cancel)
 	}
 	defer func() {
 		if m.hooks != nil {
-			m.hooks.AfterCall(m.Name(), err)
+			m.hooks.AfterCall()
 		}
 	}()
 

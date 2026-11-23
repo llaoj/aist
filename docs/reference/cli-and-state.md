@@ -5,8 +5,8 @@
 | Command | Requires Login? | Description |
 |---|---|---|
 | `aist` | Yes | Start interactive troubleshooting session |
-| `aist "<question>"` | Yes | Start session with an initial question (or analyze stdin when piped) |
-| `<cmd> \| aist ["<question>"]` | Yes | Read-only pipe analysis mode (exits after printing findings) |
+| `aist "<question>"` | Yes | Start interactive session with an initial question |
+| `<cmd> \| aist ["<question>"]` | Yes | Ingest piped stdin and continue interactively via `/dev/tty` (falls back to one-shot read-only output when stdout is redirected or headless) |
 | `aist sessions` | Yes | List recent local sessions and resume the selected conversation |
 | `aist login [server] [-e email]` | No | Authenticate against `[server]` and store credentials in `~/.aist/token.json` |
 | `aist logout` | No | Remove `~/.aist/token.json` (preserves `preferences.json`, `sessions/`, `memory/`, and `fileedit/`) |

@@ -186,7 +186,7 @@ func TestRunLoginRemembersServerAfterCancel(t *testing.T) {
 	}
 	assertRememberedServerOnly(t, stateRoot, "https://aist.example.com")
 
-	if err := runWhoami(ctx); err == nil {
+	if err := printWhoami(ctx, io.Discard, defaultWhoamiTimeout); err == nil {
 		t.Fatal("whoami should report not logged in")
 	}
 }

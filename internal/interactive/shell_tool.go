@@ -62,7 +62,7 @@ func (s *Session) runShellCommand(ctx context.Context, cmd tools.ShellCommand, m
 		return false, nil
 	}
 
-	decision, err := s.confirmShell(ctx, cmd, label)
+	decision, err := s.commandConfirmer.ConfirmCommand(ctx, cmd.Type)
 	if err != nil {
 		return false, err
 	}
@@ -120,15 +120,6 @@ func (s *Session) appendShellReport(ctx context.Context, cmd tools.ShellCommand,
 		resultField("Detail", detail),
 		resultField("Command", cmd.CommandLine),
 	)
-}
-
-func (s *Session) confirmShell(ctx context.Context, cmd tools.ShellCommand, label string) (Decision, error) {
-	return s.commandConfirmer.ConfirmCommand(ctx, ConfirmationRequest{
-		Type:          cmd.Type,
-		UniqueTargets: 1,
-		Targets:       []string{label},
-		Invocation:    cmd.FormatInvocation(s.translator),
-	})
 }
 
 func sanitizeTargetLabel(raw string) string {
