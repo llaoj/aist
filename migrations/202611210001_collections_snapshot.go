@@ -81,7 +81,7 @@ func init() {
 						"id": "email3885137012",
 						"name": "email",
 						"onlyDomains": [],
-						"presentable": false,
+						"presentable": true,
 						"required": true,
 						"system": true,
 						"type": "email"
@@ -485,7 +485,8 @@ func init() {
 						"values": [
 							"quota",
 							"rate_limit",
-							"auth"
+							"auth",
+							"transient"
 						]
 					},
 					{

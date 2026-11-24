@@ -50,6 +50,12 @@ func TestInitialCollectionsSnapshot(t *testing.T) {
 		[]string{"email", "allowed_models", "weekly_token_quota", "settings", "created", "updated"},
 		[]string{"default_model", "language"},
 	)
+	if emailField, ok := users.Fields.GetByName("email").(*core.EmailField); !ok || emailField == nil || !emailField.Presentable {
+		t.Fatalf("users.email must be presentable")
+	}
+	if nameField, ok := users.Fields.GetByName("name").(*core.TextField); !ok || nameField == nil || nameField.Presentable {
+		t.Fatalf("users.name must not be presentable")
+	}
 
 	providers, err := app.FindCollectionByNameOrId("upstream_providers")
 	if err != nil {
