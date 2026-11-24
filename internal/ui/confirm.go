@@ -1,9 +1,9 @@
 package ui
 
 import (
+	"errors"
 	"fmt"
 
-	tea "charm.land/bubbletea/v2"
 	"github.com/llaoj/aist/internal/i18n"
 	"github.com/llaoj/aist/internal/interactive"
 )
@@ -57,20 +57,14 @@ func promptConfirm(prompt, keyHint string, options []confirmOption) (ConfirmDeci
 		decisions = append(decisions, option.decision)
 	}
 
-	model := newSelectModel(prompt, keyHint, labels)
-	p := tea.NewProgram(model)
-	final, err := p.Run()
-	fmt.Println()
-
+	selected, err := PromptSelect(prompt, keyHint, labels)
 	if err != nil {
+		if errors.Is(err, ErrInterrupted) {
+			return ConfirmSkip, ErrInterrupted
+		}
 		return ConfirmSkip, fmt.Errorf("confirmation error: %w", err)
 	}
-
-	m := final.(selectModel)
-	if m.interrupted {
-		return ConfirmSkip, ErrInterrupted
-	}
-	return confirmDecisionForSelection(m.selected, decisions), nil
+	return confirmDecisionForSelection(selected, decisions), nil
 }
 
 func confirmDecisionForSelection(index int, decisions []ConfirmDecision) ConfirmDecision {
