@@ -8,12 +8,22 @@ import (
 	"unicode"
 
 	"github.com/llaoj/aist/internal/commandguard"
+	"github.com/llaoj/aist/internal/llm"
 	"github.com/llaoj/aist/internal/target"
 	"github.com/llaoj/aist/internal/tools"
 	"github.com/llaoj/aist/internal/util"
 )
 
-func (s *Session) runShellCommand(ctx context.Context, cmd tools.ShellCommand, maxStep int) (rejectAll bool, err error) {
+func (s *Session) prepareShellCommand(ctx context.Context, call llm.ToolCall, maxStep int) (target.Target, tools.ShellCommand, bool) {
+	cmd, parseErr := tools.ParseShellCommand(toRawToolCall(call))
+	if parseErr != nil {
+		s.appendToolReport(ctx, call.ID, tools.ToolOutcomeFailed, "",
+			resultField("Error", "invalid shell_execute arguments: "+parseErr.Error()),
+			resultField("Detail", "No command was executed."),
+		)
+		return target.Target{}, tools.ShellCommand{}, false
+	}
+
 	stepLabel := fmt.Sprintf("%d/%d", cmd.StepIndex, maxStep)
 
 	tgt, targetErr := target.New(cmd.Target)
@@ -24,7 +34,7 @@ func (s *Session) runShellCommand(ctx context.Context, cmd tools.ShellCommand, m
 		detail := fmt.Sprintf("Invalid target %q: %v. No command was executed.", display.Target, targetErr)
 		s.renderer.RenderNotice(NoticeLevelError, detail)
 		s.appendShellReport(ctx, cmd, display.Target, tools.ToolOutcomeSkipped, detail)
-		return false, nil
+		return target.Target{}, tools.ShellCommand{}, false
 	}
 
 	label := tgt.String()
@@ -37,7 +47,6 @@ func (s *Session) runShellCommand(ctx context.Context, cmd tools.ShellCommand, m
 			s.renderer.RenderBlacklistNotice(block.Pattern)
 			s.appendShellReport(ctx, cmd, label, tools.ToolOutcomeSkipped,
 				"Command is blacklisted and cannot be executed. Blacklist pattern: "+block.Pattern)
-			return false, nil
 		case commandguard.KindTUIEditor:
 			notice := s.translator.T("executor.tui_editor_blocked", block.Program)
 			s.renderer.RenderNotice(NoticeLevelWarning, notice)
@@ -45,7 +54,6 @@ func (s *Session) runShellCommand(ctx context.Context, cmd tools.ShellCommand, m
 				"Blocked because %q is a full-screen interactive text editor. Use the file_edit tool instead (file_edit supports both remote SSH target and sudo=true).",
 				block.Program,
 			))
-			return false, nil
 		default:
 			notice := s.translator.T("executor.tui_monitor_blocked", block.Program)
 			s.renderer.RenderNotice(NoticeLevelWarning, notice)
@@ -53,35 +61,43 @@ func (s *Session) runShellCommand(ctx context.Context, cmd tools.ShellCommand, m
 				"Blocked because %q is a full-screen interactive pager or monitor. Re-run with non-interactive flags instead (for example --no-pager, cat/head/tail, or top -b -n 1 on Linux / top -l 1 on macOS).",
 				block.Program,
 			))
-			return false, nil
 		}
+		return target.Target{}, tools.ShellCommand{}, false
 	}
 
 	if s.commandConfirmer == nil {
 		s.appendShellReport(ctx, cmd, label, tools.ToolOutcomeSkipped, "Command execution skipped: confirmation is unavailable.")
-		return false, nil
+		return target.Target{}, tools.ShellCommand{}, false
 	}
 
+	return tgt, cmd, true
+}
+
+func (s *Session) promptShellCommand(ctx context.Context, cmd tools.ShellCommand) (Decision, error) {
 	decision, err := s.commandConfirmer.ConfirmCommand(ctx, cmd.Type)
 	if err != nil {
-		return false, err
+		return DecisionUnknown, err
+	}
+	if decision != DecisionUnknown {
+		s.autoToolCalls = 0
 	}
 
 	switch decision {
 	case DecisionUnknown:
-		s.appendShellReport(ctx, cmd, label, tools.ToolOutcomeSkipped, "Command execution skipped: no confirmation decision.")
-		return false, nil
+		s.appendShellReport(ctx, cmd, cmd.Target, tools.ToolOutcomeSkipped, "Command execution skipped: no confirmation decision.")
 	case DecisionSkip:
-		s.appendShellReport(ctx, cmd, label, tools.ToolOutcomeSkipped, "Command execution skipped by user.")
-		return false, nil
+		s.appendShellReport(ctx, cmd, cmd.Target, tools.ToolOutcomeSkipped, "Command execution skipped by user.")
 	case DecisionRejectRemaining:
-		s.appendShellReport(ctx, cmd, label, tools.ToolOutcomeRejected, "User rejected execution of this and all subsequent commands.")
-		return true, nil
+		s.appendShellReport(ctx, cmd, cmd.Target, tools.ToolOutcomeRejected, "User rejected execution of this and all subsequent commands.")
 	}
+	return decision, nil
+}
 
+func (s *Session) executeShellCommand(ctx context.Context, cmd tools.ShellCommand, tgt target.Target) {
+	label := cmd.Target
 	if s.shellCommandExecutor == nil {
 		s.appendShellReport(ctx, cmd, label, tools.ToolOutcomeFailed, "Command execution failed: executor is unavailable.")
-		return false, nil
+		return
 	}
 
 	s.renderer.RenderExecutionOutputHeader(label)
@@ -111,7 +127,6 @@ func (s *Session) runShellCommand(ctx context.Context, cmd tools.ShellCommand, m
 	fields = append(fields, resultField("Command", cmd.CommandLine))
 
 	s.appendToolResult(ctx, cmd.ToolCallID, TruncateContent(renderToolResult(outcome, fields, output), MaxTurnChars), outcome)
-	return false, nil
 }
 
 func (s *Session) appendShellReport(ctx context.Context, cmd tools.ShellCommand, label string, outcome tools.ToolOutcome, detail string) {

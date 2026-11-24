@@ -81,8 +81,8 @@ func TestFileEditToolAppliesAfterConfirmation(t *testing.T) {
 	prompter := &fakeFilePrompter{confirm: true}
 	session := newFileEditSession(editor, prompter)
 
-	if _, err := session.handleFileEdit(context.Background(), fileEditCall()); err != nil {
-		t.Fatalf("handleFileEdit: %v", err)
+	if _, err := session.runToolCalls(context.Background(), []llm.ToolCall{fileEditCall()}); err != nil {
+		t.Fatalf("runToolCalls: %v", err)
 	}
 	if editor.prepareReq.Path != "/tmp/ssh_config" || editor.prepareReq.OldContent != "Host old\n" {
 		t.Fatalf("prepare request = %+v", editor.prepareReq)
@@ -101,8 +101,8 @@ func TestFileEditToolSkippedDoesNotWrite(t *testing.T) {
 	prompter := &fakeFilePrompter{confirm: false}
 	session := newFileEditSession(editor, prompter)
 
-	if _, err := session.handleFileEdit(context.Background(), fileEditCall()); err != nil {
-		t.Fatalf("handleFileEdit: %v", err)
+	if _, err := session.runToolCalls(context.Background(), []llm.ToolCall{fileEditCall()}); err != nil {
+		t.Fatalf("runToolCalls: %v", err)
 	}
 	if editor.applied {
 		t.Fatal("skipped edit must not be applied")
@@ -121,8 +121,8 @@ func TestFileEditToolPrepareFailureDoesNotPrompt(t *testing.T) {
 	prompter := &fakeFilePrompter{confirm: true}
 	session := newFileEditSession(editor, prompter)
 
-	if _, err := session.handleFileEdit(context.Background(), fileEditCall()); err != nil {
-		t.Fatalf("handleFileEdit: %v", err)
+	if _, err := session.runToolCalls(context.Background(), []llm.ToolCall{fileEditCall()}); err != nil {
+		t.Fatalf("runToolCalls: %v", err)
 	}
 	if prompter.calls != 0 || editor.applied {
 		t.Fatalf("unexpected prompt/apply: calls=%d applied=%v", prompter.calls, editor.applied)
@@ -248,8 +248,8 @@ func TestFileEditPropagatesRemoteTargetAndSudo(t *testing.T) {
 			}`,
 		},
 	}
-	if _, err := session.handleFileEdit(context.Background(), call); err != nil {
-		t.Fatalf("handleFileEdit: %v", err)
+	if _, err := session.runToolCalls(context.Background(), []llm.ToolCall{call}); err != nil {
+		t.Fatalf("runToolCalls: %v", err)
 	}
 	if editor.prepareReq.Target != "web1" || !editor.prepareReq.UseSudo {
 		t.Fatalf("prepareReq = %+v", editor.prepareReq)

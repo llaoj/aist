@@ -19,11 +19,11 @@ func TestFileEditConfirmFormatsLocation(t *testing.T) {
 
 func TestFollowUpLimitHintFormatsRoundCount(t *testing.T) {
 	for _, language := range []string{"en", "zh"} {
-		got := New(language).T("interactive.followup_limit_hint", 25)
+		got := New(language).T("interactive.followup_limit_hint", 15)
 		if strings.Contains(got, "%!") {
 			t.Fatalf("%s hint has unused format args: %q", language, got)
 		}
-		if !strings.Contains(got, "25") {
+		if !strings.Contains(got, "15") {
 			t.Fatalf("%s hint = %q, want round count", language, got)
 		}
 	}

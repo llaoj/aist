@@ -22,7 +22,7 @@ Wait-free autonomous loop within each turn:
    - **Run / Yes**: execute the command or apply the file diff and return the result to the model;
    - **Skip this command / No**: skip this single step and continue remaining steps;
    - **Reject all and let me add details**: abort all remaining confirmation-gated steps in the current batch and immediately return to your input prompt so you can steer the investigation.
-3. AIST automatically continues analyzing outputs up to **25 tool rounds per turn** (`DefaultMaxFollowUps = 25`), pausing politely if reached so you can type `"continue"` or refine instructions.
+3. User-confirmed steps (`Run` or `Skip`) never hit an artificial step wall; AIST only pauses if **15 consecutive unattended tool rounds** (`DefaultMaxAutoToolCalls = 15`, such as silent memory lookups or guard rejections) occur without human confirmation, so you can type `"continue"` or refine instructions.
 4. Press `Esc` anytime while the model is thinking to cancel the in-flight request without losing session history; press `Ctrl+C` at the prompt to save and exit.
 
 > [!NOTE]

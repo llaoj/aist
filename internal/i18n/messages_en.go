@@ -13,7 +13,7 @@ var EnglishMessages = map[string]string{
 	"interactive.user_label":            "User",
 	"interactive.turn_complete":         "✓ Turn complete, please continue with questions",
 	"interactive.reject_remaining_hint": "Stopped the remaining actions. Please add more details to continue.",
-	"interactive.followup_limit_hint":   `Reached the per-turn tool call limit (%d rounds) and paused; enter "continue" to proceed or add more details.`,
+	"interactive.followup_limit_hint":   `Reached the consecutive unattended tool call limit (%d rounds) and paused; enter "continue" to proceed or add more details.`,
 	"interactive.think_content":         "Thinking Content:",
 	"interactive.esc_interrupt":         "✗ Canceled. Continue typing.",
 	"interactive.esc_hint":              "esc to cancel",

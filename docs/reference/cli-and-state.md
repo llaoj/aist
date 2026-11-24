@@ -59,7 +59,7 @@ Remote SSH file backups are stored under `~/.aist/fileedit/backups/@remote/<targ
 | Per-turn user message / tool result | `8,000` chars (60% head + 40% tail) |
 | Buffered shell stdout/stderr in memory | `1 MiB` (first `512 KB` + last `512 KB`) |
 | Shell execution timeout | `30m` (`5s` post-EOF exit grace) |
-| Max follow-up tool rounds per turn | `25` |
+| Max consecutive unattended tool rounds | `15` (resets on user confirmation) |
 | `file_edit` max file / new content size | `1 MiB` |
 | `file_edit` backup retention per file | `10` deduplicated versions |
 | Local Memory budget (`~/.aist/memory/`) | `32 KiB` total / `8 KiB` per `memory_save` |

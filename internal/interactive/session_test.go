@@ -137,12 +137,12 @@ func TestRunTurnForcesSummaryAtFollowUpLimitAndResumesCleanly(t *testing.T) {
 		Content: "node info",
 	}}}
 	session := NewSession(SessionOptions{
-		LLM:           model,
-		Mode:          ModeInteractive,
-		PromptSet:     staticPrompts{},
-		MaxFollowUps:  2,
-		MemoryManager: mem,
-		Renderer:      recorder,
+		LLM:              model,
+		Mode:             ModeInteractive,
+		PromptSet:        staticPrompts{},
+		MaxAutoToolCalls: 2,
+		MemoryManager:    mem,
+		Renderer:         recorder,
 		Tools: []llm.ToolDefinition{{
 			Name:        tools.ToolMemorySearch,
 			Description: "search memory",
@@ -174,7 +174,7 @@ func TestRunTurnForcesSummaryAtFollowUpLimitAndResumesCleanly(t *testing.T) {
 	if recorder.lastAssistantText() != "Step limit reached after 2 searches; web3 remains." {
 		t.Fatalf("assistant summary = %q", recorder.lastAssistantText())
 	}
-	if !recorder.hasNotice("Reached the per-turn tool call limit (2 rounds)") {
+	if !recorder.hasNotice("Reached the consecutive unattended tool call limit (2 rounds)") {
 		t.Fatalf("notices = %+v, want follow-up limit hint", recorder.notices)
 	}
 	if recorder.turnCompletions != 0 {
@@ -209,6 +209,66 @@ func TestRunTurnForcesSummaryAtFollowUpLimitAndResumesCleanly(t *testing.T) {
 	}
 }
 
+func TestUserConfirmedStepsResetAutoToolCalls(t *testing.T) {
+	model := &recordingScriptedModel{
+		responses: []*llm.CompletionResponse{
+			// 1st auto step (count = 1)
+			{ToolCalls: []llm.ToolCall{{
+				ID:       "mem-1",
+				Type:     "function",
+				Function: llm.FunctionCall{Name: tools.ToolMemorySearch, Arguments: `{"query":"nginx"}`},
+			}}},
+			// User-confirmed shell step resets count -> 0
+			{ToolCalls: []llm.ToolCall{shellCall("sh-1", 1, "local", "ss -s", "query")}},
+			// Auto TUI guard block (count = 1)
+			{ToolCalls: []llm.ToolCall{shellCall("sh-2", 1, "local", "top", "query")}},
+			// User-confirmed shell step resets count -> 0
+			{ToolCalls: []llm.ToolCall{shellCall("sh-3", 1, "local", "top -b -n 1", "query")}},
+			// User-skipped shell step also counts as human interaction -> 0
+			{ToolCalls: []llm.ToolCall{shellCall("sh-4", 1, "local", "awk '{print $1}' access.log", "query")}},
+			// Another user-confirmed shell step -> 0 (total steps = 6, well above MaxAutoToolCalls = 2)
+			{ToolCalls: []llm.ToolCall{shellCall("sh-5", 1, "local", "nginx -t", "query")}},
+			{Content: "Attack mitigated cleanly."},
+		},
+	}
+	recorder := &turnRecorder{}
+	confirmer := &fakeConfirmer{
+		decisions: []Decision{DecisionApprove, DecisionApprove, DecisionSkip, DecisionApprove},
+	}
+	executor := &fakeShellExecutor{}
+	session := NewSession(SessionOptions{
+		LLM:                  model,
+		Mode:                 ModeInteractive,
+		PromptSet:            staticPrompts{},
+		MaxAutoToolCalls:     2,
+		MemoryManager:        &fakeMemory{},
+		CommandConfirmer:     confirmer,
+		ShellCommandExecutor: executor,
+		Renderer:             recorder,
+	})
+
+	if err := session.handleUserTurn("investigate nginx attack"); err != nil {
+		t.Fatalf("handleUserTurn: %v", err)
+	}
+	if len(model.requests) != 7 {
+		t.Fatalf("model calls = %d, want 7 without hitting unattended cap", len(model.requests))
+	}
+	for i, req := range model.requests {
+		if req.ToolChoice != llm.ToolChoiceAuto {
+			t.Fatalf("req[%d].ToolChoice = %q, want auto", i, req.ToolChoice)
+		}
+	}
+	if len(executor.requests) != 3 {
+		t.Fatalf("executed commands = %d, want 3 (approved steps only)", len(executor.requests))
+	}
+	if recorder.lastAssistantText() != "Attack mitigated cleanly." {
+		t.Fatalf("final assistant text = %q", recorder.lastAssistantText())
+	}
+	if recorder.turnCompletions != 1 {
+		t.Fatalf("turnCompletions = %d, want 1", recorder.turnCompletions)
+	}
+}
+
 func TestRunTurnSkipsStrayToolCallsFromNonCompliantFinalResponse(t *testing.T) {
 	model := &recordingScriptedModel{
 		responses: []*llm.CompletionResponse{
@@ -236,12 +296,12 @@ func TestRunTurnSkipsStrayToolCallsFromNonCompliantFinalResponse(t *testing.T) {
 	mem := &fakeMemory{}
 	recorder := &turnRecorder{}
 	session := NewSession(SessionOptions{
-		LLM:           model,
-		Mode:          ModeInteractive,
-		PromptSet:     staticPrompts{},
-		MaxFollowUps:  1,
-		MemoryManager: mem,
-		Renderer:      recorder,
+		LLM:              model,
+		Mode:             ModeInteractive,
+		PromptSet:        staticPrompts{},
+		MaxAutoToolCalls: 1,
+		MemoryManager:    mem,
+		Renderer:         recorder,
 	})
 
 	if err := session.handleUserTurn("check"); err != nil {

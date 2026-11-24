@@ -13,7 +13,7 @@ var ChineseMessages = map[string]string{
 	"interactive.user_label":            "用户",
 	"interactive.turn_complete":         "✓ 本轮已完成",
 	"interactive.reject_remaining_hint": "已停止本轮后续操作，请补充更多说明后继续。",
-	"interactive.followup_limit_hint":   "已达到单轮工具调用上限（%d 轮），已暂停自动执行；输入“继续”可接着处理，或补充更多说明。",
+	"interactive.followup_limit_hint":   "已达到连续自动工具调用上限（%d 轮），已暂停自动执行；输入“继续”可接着处理，或补充更多说明。",
 	"interactive.think_content":         "思考内容:",
 	"interactive.esc_interrupt":         "✗ 已取消，可继续输入",
 	"interactive.esc_hint":              "ESC 取消",

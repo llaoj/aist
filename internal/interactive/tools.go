@@ -8,59 +8,64 @@ import (
 	"github.com/llaoj/aist/internal/tools"
 )
 
-// dispatchToolCalls executes one batch of tool calls in model order and reports
-// whether the user rejected confirmation-gated calls to return to user input
-// immediately. Tools that do not require user confirmation still execute.
-func (s *Session) dispatchToolCalls(ctx context.Context, calls []llm.ToolCall) (rejectRemaining bool, err error) {
+// runToolCalls executes one batch of tool calls in model order and reports
+// whether the user rejected remaining confirmation-gated calls. Only an
+// interrupted or broken confirmation prompt returns a non-nil error.
+func (s *Session) runToolCalls(ctx context.Context, calls []llm.ToolCall) (rejectRemaining bool, err error) {
 	maxStep := maxStepIndex(calls)
-	rejectConfirmed := false
 
 	for i, call := range calls {
 		switch call.Function.Name {
 		case tools.ToolShellExecute:
-			if rejectConfirmed {
+			if rejectRemaining {
 				s.appendToolReport(ctx, call.ID, tools.ToolOutcomeRejected, "", resultField("Detail", rejectedRemainingToolResult))
 				continue
 			}
-			cmd, parseErr := tools.ParseShellCommand(toRawToolCall(call))
-			if parseErr != nil {
-				s.appendToolReport(ctx, call.ID, tools.ToolOutcomeFailed, "",
-					resultField("Error", "invalid shell_execute arguments: "+parseErr.Error()),
-					resultField("Detail", "No command was executed."),
-				)
+			tgt, cmd, canPrompt := s.prepareShellCommand(ctx, call, maxStep)
+			if !canPrompt {
 				continue
 			}
-			rejected, runErr := s.runShellCommand(ctx, cmd, maxStep)
-			if runErr != nil {
+			decision, promptErr := s.promptShellCommand(ctx, cmd)
+			if promptErr != nil {
 				s.appendRemainingToolResults(ctx, calls[i:], interruptedToolResult, tools.ToolOutcomeSkipped)
-				return false, runErr
+				return false, promptErr
 			}
-			if rejected {
-				rejectConfirmed = true
+			switch decision {
+			case DecisionApprove:
+				s.executeShellCommand(ctx, cmd, tgt)
+			case DecisionRejectRemaining:
+				rejectRemaining = true
 			}
 		case tools.ToolMemorySearch:
 			s.handleMemorySearch(ctx, call)
 		case tools.ToolMemorySave:
 			s.handleMemorySave(ctx, call)
 		case tools.ToolFileEdit:
-			if rejectConfirmed {
+			if rejectRemaining {
 				s.appendToolReport(ctx, call.ID, tools.ToolOutcomeRejected, "", resultField("Detail", rejectedRemainingToolResult))
 				continue
 			}
-			rejected, editErr := s.handleFileEdit(ctx, call)
-			if editErr != nil {
-				s.appendRemainingToolResults(ctx, calls[i:], interruptedToolResult, tools.ToolOutcomeSkipped)
-				return false, editErr
+			change, args, canPrompt := s.prepareFileEdit(ctx, call)
+			if !canPrompt {
+				continue
 			}
-			if rejected {
-				rejectConfirmed = true
+			decision, promptErr := s.promptFileEdit(ctx, call.ID, args, change)
+			if promptErr != nil {
+				s.appendRemainingToolResults(ctx, calls[i:], interruptedToolResult, tools.ToolOutcomeSkipped)
+				return false, promptErr
+			}
+			switch decision {
+			case DecisionApprove:
+				s.applyFileEdit(ctx, call.ID, args, change)
+			case DecisionRejectRemaining:
+				rejectRemaining = true
 			}
 		default:
 			s.appendToolResult(ctx, call.ID, fmt.Sprintf("Unknown tool %q. No action was taken.", call.Function.Name), tools.ToolOutcomeSkipped)
 		}
 	}
 
-	return rejectConfirmed, nil
+	return rejectRemaining, nil
 }
 
 const (

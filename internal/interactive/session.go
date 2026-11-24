@@ -23,8 +23,9 @@ const (
 	ModePipe        Mode = "pipe"
 )
 
-// DefaultMaxFollowUps caps tool-result follow-up model calls within one turn.
-const DefaultMaxFollowUps = 25
+// DefaultMaxAutoToolCalls caps consecutive tool-call rounds that run without
+// user confirmation within one turn. Any user confirmation resets the counter.
+const DefaultMaxAutoToolCalls = 15
 
 // SessionOptions configures a Session.
 type SessionOptions struct {
@@ -32,7 +33,7 @@ type SessionOptions struct {
 	Mode                 Mode
 	PromptSet            PromptSet
 	Version              string
-	MaxFollowUps         int
+	MaxAutoToolCalls     int
 	CommandGuard         *commandguard.Guard
 	MemoryManager        MemoryManager
 	FileEditor           FileEditor
@@ -61,7 +62,8 @@ type Session struct {
 	mode                 Mode
 	promptSet            PromptSet
 	version              string
-	maxFollowUps         int
+	maxAutoToolCalls     int
+	autoToolCalls        int
 	commandGuard         *commandguard.Guard
 	memoryManager        MemoryManager
 	fileEditor           FileEditor
@@ -77,9 +79,9 @@ type Session struct {
 
 // NewSession creates a new session for the given mode.
 func NewSession(opts SessionOptions) *Session {
-	maxFollowUps := opts.MaxFollowUps
-	if maxFollowUps <= 0 {
-		maxFollowUps = DefaultMaxFollowUps
+	maxAutoToolCalls := opts.MaxAutoToolCalls
+	if maxAutoToolCalls <= 0 {
+		maxAutoToolCalls = DefaultMaxAutoToolCalls
 	}
 	s := &Session{
 		llm:                  opts.LLM,
@@ -88,7 +90,7 @@ func NewSession(opts SessionOptions) *Session {
 		mode:                 opts.Mode,
 		promptSet:            opts.PromptSet,
 		version:              opts.Version,
-		maxFollowUps:         maxFollowUps,
+		maxAutoToolCalls:     maxAutoToolCalls,
 		commandGuard:         opts.CommandGuard,
 		memoryManager:        opts.MemoryManager,
 		fileEditor:           opts.FileEditor,
@@ -304,33 +306,34 @@ func (s *Session) handleUserTurn(userInput string) error {
 }
 
 // runTurn drives the model/tool loop until the model stops requesting tools or
-// reaches the per-turn follow-up cap.
+// reaches the consecutive auto tool-call limit.
 func (s *Session) runTurn(ctx context.Context) error {
-	toolsDispatched := false
-	followUps := 0
+	toolsRan := false
+	s.autoToolCalls = 0
 
 	for {
-		isFinalFollowUp := followUps >= s.maxFollowUps
-		resp, err := s.runModelStep(ctx, isFinalFollowUp)
+		atAutoLimit := s.autoToolCalls >= s.maxAutoToolCalls
+		resp, err := s.runModelStep(ctx, atAutoLimit)
 		if err != nil || resp == nil {
 			return err
 		}
-		if isFinalFollowUp {
+		if atAutoLimit {
 			if len(resp.ToolCalls) > 0 {
 				s.appendRemainingToolResults(ctx, resp.ToolCalls, followUpLimitToolResult, tools.ToolOutcomeSkipped)
 			}
-			s.renderer.RenderNotice(NoticeLevelWarning, s.translator.T("interactive.followup_limit_hint", s.maxFollowUps))
+			s.renderer.RenderNotice(NoticeLevelWarning, s.translator.T("interactive.followup_limit_hint", s.maxAutoToolCalls))
 			return nil
 		}
 		if len(resp.ToolCalls) == 0 {
-			if toolsDispatched {
+			if toolsRan {
 				s.renderer.RenderTurnComplete()
 			}
 			return nil
 		}
 
-		toolsDispatched = true
-		rejectRemaining, err := s.dispatchToolCalls(ctx, resp.ToolCalls)
+		toolsRan = true
+		s.autoToolCalls++
+		rejectRemaining, err := s.runToolCalls(ctx, resp.ToolCalls)
 		if err != nil {
 			return err
 		}
@@ -338,7 +341,6 @@ func (s *Session) runTurn(ctx context.Context) error {
 			s.renderer.RenderNotice(NoticeLevelInfo, s.translator.T("interactive.reject_remaining_hint"))
 			return nil
 		}
-		followUps++
 	}
 }
 
