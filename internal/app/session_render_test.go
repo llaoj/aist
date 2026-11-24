@@ -13,9 +13,11 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/fatih/color"
 	"github.com/llaoj/aist/internal/executor"
+	"github.com/llaoj/aist/internal/fileedit"
 	"github.com/llaoj/aist/internal/i18n"
 	"github.com/llaoj/aist/internal/interactive"
 	"github.com/llaoj/aist/internal/memory"
+	"github.com/llaoj/aist/internal/target"
 	"github.com/llaoj/aist/internal/tools"
 	"github.com/llaoj/aist/internal/ui"
 )
@@ -101,6 +103,44 @@ func TestMemoryNotifierEndsRegionInGreen(t *testing.T) {
 	}
 	if !strings.Contains(out, "\x1b[32m") {
 		t.Fatalf("memory notification is not green: %q", out)
+	}
+}
+
+func TestRenderFileChangeHighlightsHeaderInRed(t *testing.T) {
+	oldNoColor := color.NoColor
+	color.NoColor = false
+	defer func() { color.NoColor = oldNoColor }()
+
+	tgt, err := target.New("web1")
+	if err != nil {
+		t.Fatalf("target.New: %v", err)
+	}
+	renderer := terminalRenderer{translator: i18n.New("zh")}
+	out := captureOutput(t, func() {
+		renderer.RenderFileChange(&fileedit.Change{
+			Target:  tgt,
+			Path:    "/etc/nginx/nginx.conf",
+			Reason:  "调大限流阈值",
+			UseSudo: true,
+			Diff:    "--- web1:/etc/nginx/nginx.conf\n+++ web1:/etc/nginx/nginx.conf\n-rate=1r/s\n+rate=20r/s\n",
+		})
+	})
+
+	lines := strings.Split(strings.TrimSuffix(out, "\n"), "\n")
+	if len(lines) < 3 {
+		t.Fatalf("unexpected lines: %q", out)
+	}
+	for i, wantPlain := range []string{
+		"文件修改:",
+		"原因: 调大限流阈值",
+		"目标: [web1] /etc/nginx/nginx.conf (sudo)",
+	} {
+		if gotPlain := ansi.Strip(lines[i]); gotPlain != wantPlain {
+			t.Fatalf("line %d plain = %q, want %q", i, gotPlain, wantPlain)
+		}
+		if !strings.Contains(lines[i], "\x1b[31m") {
+			t.Fatalf("line %d is not colored red: %q", i, lines[i])
+		}
 	}
 }
 

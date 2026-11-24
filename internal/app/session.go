@@ -53,11 +53,11 @@ func (r terminalRenderer) RenderShellCommand(stepIndex string, cmd tools.ShellCo
 }
 
 func (r terminalRenderer) RenderFileChange(change *fileedit.Change) {
-	fmt.Printf("%s:\n", r.translator.T("interactive.file_change"))
+	color.Red("%s:", r.translator.T("interactive.file_change"))
 	if change.Reason != "" {
-		fmt.Printf("%s: %s\n", r.translator.T("interactive.file_change_reason"), change.Reason)
+		color.Red("%s: %s", r.translator.T("interactive.file_change_reason"), change.Reason)
 	}
-	fmt.Printf("%s: %s\n", r.translator.T("interactive.file_change_target"), change.LocationLabel())
+	color.Red("%s: %s", r.translator.T("interactive.file_change_target"), change.LocationLabel())
 	if diff := strings.TrimRight(change.Diff, "\n"); diff != "" {
 		fmt.Println(ui.ColorizeDiff(diff))
 	}
