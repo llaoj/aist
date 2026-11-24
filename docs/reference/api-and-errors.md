@@ -74,7 +74,7 @@ Non-`2xx` responses from `POST /v1/proxy/chat/completions` use a uniform JSON en
 | `403` | `no_available_model` | No | User has no enabled `allowed_models` (or all assigned models are blocked by `auth` error) |
 | `429` | `quota_exceeded` | No | User's `weekly_token_quota` reached; `retry_at` indicates next Monday `00:00 UTC` |
 | `503` | `no_available_model` | No | All assigned models are currently cooling down (`quota` or `rate_limit`); `retry_at` gives earliest recovery time |
-| `502` | `upstream_unavailable` | Transient | All available candidates failed with transient `5xx` or network errors |
+| `502` | `upstream_unavailable` | No | The server already exhausted all available candidates within the proxy budget (`5xx` or timeout) |
 
 ## `POST /v1/register` Error Codes
 

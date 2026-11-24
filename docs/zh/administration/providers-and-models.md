@@ -27,7 +27,7 @@
 | `max_output_tokens` | int | 最大输出 Token；转发时自动将请求 `max_tokens` 限制在该模型上限内（默认 `8192`） |
 | `enabled` | bool | 模型启用开关 |
 | `unavailable_until` | date（UTC） | 自动冷却截止时间；正常或因鉴权错误永久阻塞时为空 |
-| `unavailable_reason` | select | 不可用原因枚举：`quota` / `rate_limit` / `auth` |
+| `unavailable_reason` | select | 不可用原因枚举：`quota` / `rate_limit` / `auth` / `transient` |
 | `last_error` | text(1024) | 最近一次标记不可用时的脱敏错误摘要 |
 
 ## 推荐的多级模型梯度编排
@@ -49,7 +49,7 @@
 | **额度 / 余额耗尽**（`quota`） | HTTP `402`，或带 `insufficient_quota` / `insufficient_balance` 等余额不足特征的 `429` | **是** → 自动切下一个模型 | 标记 `unavailable_reason = "quota"`，首次冷却 **6 小时**；冷却到期重试若仍失败，退避延长至 **24 小时** |
 | **并发 / 速率限流**（`rate_limit`） | 非额度耗尽类的 HTTP `429` | **是** → 自动切下一个模型 | 标记 `unavailable_reason = "rate_limit"`，优先遵循上游 `Retry-After` 头（无头时首次冷却 **30 秒**，连续失败退避至 **2 分钟**，上限 24 小时） |
 | **Key 无效 / 无权限**（`auth`） | HTTP `401` 或 `403` | **是** → 自动切下一个模型 | 标记 `unavailable_reason = "auth"` 且不自动重试；管理员在后台更新该 Provider 的 `api_key`（或手动清空 `unavailable_reason`）后立即自动恢复 |
-| **上游临时故障** | HTTP `5xx` 或网络超时 | **是** → 自动切下一个模型 | **不标记**模型不可用，仅当次请求回退 |
+| **上游临时故障 / 超时**（`transient`） | HTTP `5xx` 或单模型请求超时（默认 `30s`；整次代理总预算 `85s`） | **是** → 自动切下一个模型 | 标记 `unavailable_reason = "transient"`，首次冷却 **1 分钟**；冷却到期重试若仍失败，退避延长至 **3 分钟** |
 | **客户端请求本身有误** | HTTP `400`（如输入超长、安全策略拦截） | **否** → 直接向客户端返回结构化 `400 invalid_request` | 确定性的请求输入问题不盲目消耗后续候选模型 |
 
 冷却期满后，下一次请求会自动优先探测该模型：一旦返回 `2xx`，服务端立即清空 `unavailable_reason`、`unavailable_until` 与 `last_error`，恢复正常调度。

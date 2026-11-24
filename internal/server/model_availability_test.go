@@ -5,6 +5,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -266,5 +268,113 @@ func TestProxyReturns503WhenAllModelsUnavailable(t *testing.T) {
 	}
 	if calls != 0 {
 		t.Fatalf("upstream calls = %d, want 0", calls)
+	}
+}
+
+func TestProxyCandidateTimeoutFallsBackAndEscalatesTransientCooldown(t *testing.T) {
+	now := time.Date(2026, 11, 24, 8, 0, 0, 0, time.UTC)
+	var mu sync.Mutex
+	var tried []string
+	slowPrimary := true
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Model string `json:"model"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		mu.Lock()
+		tried = append(tried, body.Model)
+		isSlow := slowPrimary
+		mu.Unlock()
+
+		if body.Model == "primary" && isSlow {
+			select {
+			case <-r.Context().Done():
+				return
+			case <-time.After(500 * time.Millisecond):
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"model":"` + body.Model + `","choices":[{"message":{"role":"assistant","content":"ok"}}]}`))
+	}))
+	defer upstream.Close()
+
+	app, srv := setupServerWithOptions(t, APIOptions{
+		Now:                  func() time.Time { return now },
+		ProxyRequestTimeout:  500 * time.Millisecond,
+		UpstreamModelTimeout: 60 * time.Millisecond,
+	})
+	provider := createProvider(t, app, "p", upstream.URL, "sk", true)
+	primary := createModel(t, app, provider, "primary", 10, 128000, 8192, true)
+	backup := createModel(t, app, provider, "backup", 20, 128000, 8192, true)
+	user := createUser(t, app, "utimeout", "utimeoutpw123")
+	configureUser(t, app, user, nil, primary, backup)
+
+	h := buildMux(t, app, srv)
+	login := loginWithPassword(t, h, "utimeout@example.com", "utimeoutpw123")
+	reqBody := `{"model":"auto","messages":[{"role":"user","content":"hi"}]}`
+
+	// 1. Primary hangs past CandidateTimeout -> falls back to backup and enters 1m transient cooldown.
+	w := doJSON(t, h, http.MethodPost, "/v1/proxy/chat/completions", "Bearer "+login.Token, reqBody)
+	if w.Code != http.StatusOK {
+		t.Fatalf("req 1 status = %d, want 200 body=%s", w.Code, w.Body.String())
+	}
+	mu.Lock()
+	gotTried := append([]string(nil), tried...)
+	tried = nil
+	mu.Unlock()
+	if len(gotTried) != 2 || gotTried[0] != "primary" || gotTried[1] != "backup" {
+		t.Fatalf("req 1 tried = %v, want [primary backup]", gotTried)
+	}
+	rec, _ := app.FindRecordById(upstreamModelsCollection, primary.Id)
+	if rec.GetString("unavailable_reason") != modelUnavailableReasonTransient {
+		t.Fatalf("reason = %q, want transient", rec.GetString("unavailable_reason"))
+	}
+	if !strings.Contains(rec.GetString("last_error"), "timed out") {
+		t.Fatalf("last_error = %q, want timed out", rec.GetString("last_error"))
+	}
+	if diff := rec.GetDateTime("unavailable_until").Time().Sub(now); diff < 59*time.Second || diff > 61*time.Second {
+		t.Fatalf("first transient cooldown = %v, want 1m", diff)
+	}
+
+	// 2. Within 1m cooldown -> primary is skipped immediately, goes straight to backup.
+	now = now.Add(30 * time.Second)
+	w = doJSON(t, h, http.MethodPost, "/v1/proxy/chat/completions", "Bearer "+login.Token, reqBody)
+	if w.Code != http.StatusOK {
+		t.Fatalf("req 2 status = %d, want 200", w.Code)
+	}
+	mu.Lock()
+	gotTried = append([]string(nil), tried...)
+	tried = nil
+	mu.Unlock()
+	if len(gotTried) != 1 || gotTried[0] != "backup" {
+		t.Fatalf("req 2 tried = %v, want [backup]", gotTried)
+	}
+
+	// 3. After 1m cooldown expires, primary times out again -> escalates to 3m cooldown.
+	now = now.Add(31 * time.Second)
+	w = doJSON(t, h, http.MethodPost, "/v1/proxy/chat/completions", "Bearer "+login.Token, reqBody)
+	if w.Code != http.StatusOK {
+		t.Fatalf("req 3 status = %d, want 200", w.Code)
+	}
+	rec, _ = app.FindRecordById(upstreamModelsCollection, primary.Id)
+	if diff := rec.GetDateTime("unavailable_until").Time().Sub(now); diff < 179*time.Second || diff > 181*time.Second {
+		t.Fatalf("second transient cooldown = %v, want 3m", diff)
+	}
+
+	// 4. After 3m cooldown expires, primary recovers -> state cleared.
+	now = now.Add(3*time.Minute + time.Second)
+	mu.Lock()
+	slowPrimary = false
+	tried = nil
+	mu.Unlock()
+	w = doJSON(t, h, http.MethodPost, "/v1/proxy/chat/completions", "Bearer "+login.Token, reqBody)
+	if w.Code != http.StatusOK {
+		t.Fatalf("req 4 status = %d, want 200", w.Code)
+	}
+	rec, _ = app.FindRecordById(upstreamModelsCollection, primary.Id)
+	if rec.GetString("unavailable_reason") != "" || !rec.GetDateTime("unavailable_until").IsZero() || rec.GetString("last_error") != "" {
+		t.Fatalf("recovered state not cleared: reason=%q until=%v err=%q",
+			rec.GetString("unavailable_reason"), rec.GetDateTime("unavailable_until"), rec.GetString("last_error"))
 	}
 }

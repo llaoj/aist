@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"net/http"
 	"strings"
 	"testing"
@@ -15,6 +16,7 @@ func TestClassifyUpstreamErrorProviderPayloads(t *testing.T) {
 		status     int
 		retryAfter string
 		body       string
+		cause      error
 		wantKind   upstreamErrorKind
 		wantRetry  time.Duration
 		wantSubstr string
@@ -148,6 +150,13 @@ func TestClassifyUpstreamErrorProviderPayloads(t *testing.T) {
 			wantKind:   upstreamErrorKindTransient,
 			wantSubstr: "transport error",
 		},
+		{
+			name:       "timeout_error_status_0",
+			status:     0,
+			cause:      context.DeadlineExceeded,
+			wantKind:   upstreamErrorKindTransient,
+			wantSubstr: "timed out",
+		},
 	}
 
 	for _, tt := range tests {
@@ -156,7 +165,7 @@ func TestClassifyUpstreamErrorProviderPayloads(t *testing.T) {
 			if tt.retryAfter != "" {
 				header = http.Header{"Retry-After": []string{tt.retryAfter}}
 			}
-			got := classifyUpstreamError(tt.status, header, []byte(tt.body), now)
+			got := classifyUpstreamError(tt.status, header, []byte(tt.body), tt.cause, now)
 			if got.Kind != tt.wantKind {
 				t.Fatalf("Kind = %v, want %v (summary=%q)", got.Kind, tt.wantKind, got.Summary)
 			}

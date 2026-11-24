@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,8 +16,9 @@ import (
 	"github.com/pocketbase/pocketbase/tools/types"
 )
 
-// proxyClient forwards requests to upstream providers.
-var proxyClient = &http.Client{Timeout: 10 * time.Minute}
+// proxyClient forwards requests to upstream providers; per-candidate deadlines
+// are enforced through request contexts derived from the proxy budget.
+var proxyClient = &http.Client{}
 
 // handleChatCompletions authenticates the request, selects candidate models and
 // forwards the OpenAI-compatible request upstream.
@@ -60,9 +62,15 @@ func (s *API) handleChatCompletions(e *core.RequestEvent) error {
 		return respondProxyError(e, http.StatusServiceUnavailable, proxyErrorCodeNoAvailableModel, "no model is currently available", earliestModelRetryAt(candidates, now))
 	}
 
+	proxyCtx, cancelProxy := context.WithTimeout(e.Request.Context(), s.proxyRequestTimeout)
+	defer cancelProxy()
+
 	sawTransient := false
 	for _, candidate := range available {
-		res := s.forwardCandidate(e, body, candidate)
+		if proxyCtx.Err() != nil {
+			break
+		}
+		res := s.forwardCandidate(proxyCtx, e, body, candidate)
 		if res.err == nil {
 			if candidate.hasAvailabilityState() {
 				clearModelAvailability(e.App, candidate.ModelID)
@@ -77,7 +85,7 @@ func (s *API) handleChatCompletions(e *core.RequestEvent) error {
 			return e.Request.Context().Err()
 		}
 		failureNow := s.now()
-		classified := classifyUpstreamError(res.status, res.header, res.body, failureNow)
+		classified := classifyUpstreamError(res.status, res.header, res.body, res.err, failureNow)
 		if classified.Kind == upstreamErrorKindBadRequest {
 			return respondProxyError(e, http.StatusBadRequest, proxyErrorCodeInvalidRequest, sanitizeBadRequestMessage(res.body), time.Time{})
 		}
@@ -119,7 +127,7 @@ type forwardResult struct {
 	err    error
 }
 
-func (s *API) forwardCandidate(e *core.RequestEvent, body []byte, candidate modelCandidate) forwardResult {
+func (s *API) forwardCandidate(proxyCtx context.Context, e *core.RequestEvent, body []byte, candidate modelCandidate) forwardResult {
 	provider, err := e.App.FindRecordById(upstreamProvidersCollection, candidate.ProviderID)
 	if err != nil || provider == nil || !provider.GetBool("enabled") {
 		return forwardResult{err: errors.New("provider unavailable")}
@@ -136,8 +144,11 @@ func (s *API) forwardCandidate(e *core.RequestEvent, body []byte, candidate mode
 		return forwardResult{err: err}
 	}
 
+	attemptCtx, cancelAttempt := context.WithTimeout(proxyCtx, s.upstreamModelTimeout)
+	defer cancelAttempt()
+
 	req, err := http.NewRequestWithContext(
-		e.Request.Context(),
+		attemptCtx,
 		http.MethodPost,
 		baseURL+"/chat/completions",
 		bytes.NewReader(forwardBody),
@@ -152,19 +163,13 @@ func (s *API) forwardCandidate(e *core.RequestEvent, body []byte, candidate mode
 
 	resp, err := proxyClient.Do(req)
 	if err != nil {
-		if e.Request.Context().Err() == nil {
-			e.App.Logger().Warn("upstream transport failed",
-				"provider", candidate.Provider,
-				"model", candidate.Model,
-			)
-		}
-		return forwardResult{err: err}
+		return forwardTransportFailure(e, attemptCtx, candidate, err)
 	}
 	defer resp.Body.Close()
 
 	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 32<<20))
 	if err != nil {
-		return forwardResult{err: err}
+		return forwardTransportFailure(e, attemptCtx, candidate, err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		e.App.Logger().Warn("upstream returned non-2xx status",
@@ -184,6 +189,24 @@ func (s *API) forwardCandidate(e *core.RequestEvent, body []byte, candidate mode
 		header: resp.Header,
 		body:   respBody,
 	}
+}
+
+func forwardTransportFailure(e *core.RequestEvent, attemptCtx context.Context, candidate modelCandidate, err error) forwardResult {
+	if e.Request.Context().Err() != nil {
+		return forwardResult{err: err}
+	}
+	if errors.Is(attemptCtx.Err(), context.DeadlineExceeded) {
+		e.App.Logger().Warn("upstream request timed out",
+			"provider", candidate.Provider,
+			"model", candidate.Model,
+		)
+		return forwardResult{err: context.DeadlineExceeded}
+	}
+	e.App.Logger().Warn("upstream transport failed",
+		"provider", candidate.Provider,
+		"model", candidate.Model,
+	)
+	return forwardResult{err: err}
 }
 
 func validateChatBody(body []byte) error {

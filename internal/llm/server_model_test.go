@@ -112,6 +112,7 @@ func TestServerModelDoesNotRetryQuotaOrNoAvailableModel(t *testing.T) {
 	}{
 		{name: "quota_exceeded_429", status: http.StatusTooManyRequests, code: ErrorCodeQuotaExceeded},
 		{name: "no_available_model_503", status: http.StatusServiceUnavailable, code: ErrorCodeNoAvailableModel},
+		{name: "upstream_unavailable_502", status: http.StatusBadGateway, code: ErrorCodeUpstreamUnavailable},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			calls := 0
@@ -142,5 +143,39 @@ func TestServerModelDoesNotRetryQuotaOrNoAvailableModel(t *testing.T) {
 				t.Fatalf("calls = %d, want 1", calls)
 			}
 		})
+	}
+}
+
+func TestServerModelCapsTotalDurationWithTimeout(t *testing.T) {
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		select {
+		case <-r.Context().Done():
+		case <-time.After(500 * time.Millisecond):
+		}
+	}))
+	defer srv.Close()
+
+	model, err := NewServerModel(ServerModelOptions{
+		BaseURL:      srv.URL,
+		Timeout:      60 * time.Millisecond,
+		MaxAttempts:  3,
+		RetryBackoff: time.Millisecond,
+	})
+	if err != nil {
+		t.Fatalf("NewServerModel: %v", err)
+	}
+	start := time.Now()
+	_, err = model.Call(context.Background(), CompletionRequest{})
+	elapsed := time.Since(start)
+	if err == nil {
+		t.Fatal("expected timeout error")
+	}
+	if calls != 1 {
+		t.Fatalf("calls = %d, want 1 (timeout must not retry)", calls)
+	}
+	if elapsed > 300*time.Millisecond {
+		t.Fatalf("elapsed = %v, exceeded overall timeout cap", elapsed)
 	}
 }

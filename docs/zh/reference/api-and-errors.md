@@ -74,7 +74,7 @@
 | `403` | `no_available_model` | 否 | 账号未分配启用模型，或名下模型均因 `auth` 鉴权错误阻塞 |
 | `429` | `quota_exceeded` | 否 | 本周 Token 限额已用完，`retry_at` 为下周一 `00:00 UTC` |
 | `503` | `no_available_model` | 否 | 名下可用模型均处于额度或限流冷却期，`retry_at` 为最早预计恢复时间 |
-| `502` | `upstream_unavailable` | 可瞬态重试 | 已依次尝试全部可用候选模型，但上游均返回 `5xx` 或网络超时 |
+| `502` | `upstream_unavailable` | 否 | 服务端已在预算内依次尝试全部可用候选模型，但上游均返回 `5xx` 或超时 |
 
 ## `POST /v1/register` 错误码
 

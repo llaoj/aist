@@ -27,7 +27,7 @@ Clients always send `"model": "auto"` to `POST /v1/proxy/chat/completions`. All 
 | `max_output_tokens` | int | Outgoing `max_tokens` is clamped per candidate to this ceiling (default `8192`) |
 | `enabled` | bool | Master switch for this model |
 | `unavailable_until` | date (UTC) | Cooldown expiration timestamp; empty when healthy or permanently blocked by `auth` |
-| `unavailable_reason` | select | `quota` / `rate_limit` / `auth` |
+| `unavailable_reason` | select | `quota` / `rate_limit` / `auth` / `transient` |
 | `last_error` | text(1024) | Sanitized upstream error summary from the latest failure |
 
 ## Multi-Tier Cost & Reliability Strategy
@@ -49,7 +49,7 @@ When a candidate returns an error during `POST /v1/proxy/chat/completions`, the 
 | **Quota / Balance Exhausted** (`quota`) | HTTP `402`, or `429` with `insufficient_quota` / `insufficient_balance` / balance markers | **Yes** → tries next candidate | Marks `unavailable_reason = "quota"`, cools down **6 hours** on first hit and **24 hours** if a probe after expiry fails again |
 | **Rate Limited** (`rate_limit`) | HTTP `429` (non-quota) | **Yes** → tries next candidate | Marks `unavailable_reason = "rate_limit"`, honors `Retry-After` header (default **30s**, escalating to **2m** on consecutive failure, capped at 24h) |
 | **Invalid Key / Unauthorized** (`auth`) | HTTP `401` or `403` | **Yes** → tries next candidate | Marks `unavailable_reason = "auth"` with empty `unavailable_until` (no automatic retry). Updating the provider's `api_key` or clearing `unavailable_reason` in `/_/` immediately restores it |
-| **Transient Upstream Fault** | HTTP `5xx` or network timeout | **Yes** → tries next candidate | Does **not** mark model unavailable |
+| **Transient Upstream Fault / Timeout** (`transient`) | HTTP `5xx` or per-candidate timeout (default `30s`; total proxy budget `85s`) | **Yes** → tries next candidate | Marks `unavailable_reason = "transient"`, cools down **1 minute** on first hit and **3 minutes** on consecutive failure |
 | **Invalid Client Request** | HTTP `400` (context length exceeded, safety filter, bad schema) | **No** → returns structured `400 invalid_request` immediately | Does not waste fallback calls on deterministic client input errors |
 
 When a cooled-down model's `unavailable_until` passes, the next eligible request automatically probes it first: a `2xx` response clears `unavailable_reason`, `unavailable_until`, and `last_error` automatically.

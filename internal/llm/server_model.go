@@ -27,6 +27,7 @@ var _ Model = (*ServerModel)(nil)
 type ServerModel struct {
 	client       *OpenAICompatibleModel
 	hooks        Hooks
+	timeout      time.Duration
 	maxAttempts  int
 	retryBackoff time.Duration
 }
@@ -70,6 +71,7 @@ func NewServerModel(opts ServerModelOptions) (*ServerModel, error) {
 	return &ServerModel{
 		client:       client,
 		hooks:        opts.Hooks,
+		timeout:      opts.Timeout,
 		maxAttempts:  maxAttempts,
 		retryBackoff: backoff,
 	}, nil
@@ -77,7 +79,12 @@ func NewServerModel(opts ServerModelOptions) (*ServerModel, error) {
 
 // Call sends one request to the server proxy, retrying transient failures.
 func (m *ServerModel) Call(ctx context.Context, req CompletionRequest) (resp *CompletionResponse, err error) {
-	ctx, cancel := context.WithCancel(ctx)
+	var cancel context.CancelFunc
+	if m.timeout > 0 {
+		ctx, cancel = context.WithTimeout(ctx, m.timeout)
+	} else {
+		ctx, cancel = context.WithCancel(ctx)
+	}
 	defer cancel()
 	if m.hooks != nil {
 		m.hooks.BeforeCall(cancel)
@@ -115,13 +122,13 @@ func (m *ServerModel) Call(ctx context.Context, req CompletionRequest) (resp *Co
 }
 
 func retryableServerError(err error) bool {
-	if errors.Is(err, ErrAuthentication) {
+	if errors.Is(err, ErrAuthentication) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return false
 	}
 	var status *StatusError
 	if errors.As(err, &status) {
 		switch status.ErrorCode {
-		case ErrorCodeQuotaExceeded, ErrorCodeNoAvailableModel, ErrorCodeInvalidRequest:
+		case ErrorCodeQuotaExceeded, ErrorCodeNoAvailableModel, ErrorCodeUpstreamUnavailable, ErrorCodeInvalidRequest:
 			return false
 		}
 		return status.StatusCode == http.StatusTooManyRequests || status.StatusCode >= 500

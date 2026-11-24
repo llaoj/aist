@@ -14,12 +14,15 @@ const (
 	modelUnavailableReasonQuota     = "quota"
 	modelUnavailableReasonRateLimit = "rate_limit"
 	modelUnavailableReasonAuth      = "auth"
+	modelUnavailableReasonTransient = "transient"
 
 	defaultQuotaCooldown     = 6 * time.Hour
 	backoffQuotaCooldown     = 24 * time.Hour
 	defaultRateLimitCooldown = 30 * time.Second
 	backoffRateLimitCooldown = 2 * time.Minute
 	maxRateLimitCooldown     = time.Hour
+	defaultTransientCooldown = 1 * time.Minute
+	backoffTransientCooldown = 3 * time.Minute
 )
 
 func (s *API) bindModelHooks(app core.App) {
@@ -101,6 +104,14 @@ func recordModelOutcome(app core.App, candidate modelCandidate, classified class
 
 	case upstreamErrorKindAuth:
 		reason = modelUnavailableReasonAuth
+
+	case upstreamErrorKindTransient:
+		reason = modelUnavailableReasonTransient
+		cooldown := defaultTransientCooldown
+		if candidate.UnavailableReason == modelUnavailableReasonTransient {
+			cooldown = backoffTransientCooldown
+		}
+		until, _ = types.ParseDateTime(now.Add(cooldown).UTC())
 
 	default:
 		return

@@ -94,7 +94,8 @@ func TestDailyModelUsageAggregationAndLifecycle(t *testing.T) {
 	if w := doJSON(t, h, http.MethodPost, "/v1/proxy/chat/completions", "Bearer "+login.Token, reqBody); w.Code != http.StatusOK {
 		t.Fatalf("req 1 status = %d", w.Code)
 	}
-	// 2. Day 1: m-primary succeeds twice (50 + 80 = 130 tokens, 2 requests).
+	// 2. Day 1 (after transient cooldown expires): m-primary succeeds twice (50 + 80 = 130 tokens, 2 requests).
+	now = now.Add(defaultTransientCooldown + time.Second)
 	if w := doJSON(t, h, http.MethodPost, "/v1/proxy/chat/completions", "Bearer "+login.Token, reqBody); w.Code != http.StatusOK {
 		t.Fatalf("req 2 status = %d", w.Code)
 	}

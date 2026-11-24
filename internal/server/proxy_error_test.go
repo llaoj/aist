@@ -93,7 +93,8 @@ func TestProxyStructuredErrorCodes(t *testing.T) {
 		t.Fatalf("502 detail = %+v", detail)
 	}
 
-	// 5. Upstream 402 on only model -> marks cooldown and immediately returns 503 no_available_model with retry_at.
+	// 5. After transient cooldown expires, upstream 402 on only model -> marks quota cooldown and returns 503 with retry_at.
+	now = now.Add(defaultTransientCooldown + time.Second)
 	mode = "quota_402"
 	w = doJSON(t, h, http.MethodPost, "/v1/proxy/chat/completions", "Bearer "+login.Token, reqBody)
 	if w.Code != http.StatusServiceUnavailable {

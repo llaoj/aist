@@ -2,6 +2,7 @@ package migrations
 
 import (
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/pocketbase/pocketbase"
@@ -74,6 +75,15 @@ func TestInitialCollectionsSnapshot(t *testing.T) {
 		},
 		nil,
 	)
+	reasonField, ok := models.Fields.GetByName("unavailable_reason").(*core.SelectField)
+	if !ok || reasonField == nil {
+		t.Fatalf("unavailable_reason is not a SelectField")
+	}
+	for _, want := range []string{"quota", "rate_limit", "auth", "transient"} {
+		if !slices.Contains(reasonField.Values, want) {
+			t.Fatalf("unavailable_reason values = %v, missing %q", reasonField.Values, want)
+		}
+	}
 
 	usage, err := app.FindCollectionByNameOrId("daily_model_usage")
 	if err != nil {

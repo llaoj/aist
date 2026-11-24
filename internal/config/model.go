@@ -28,11 +28,12 @@ const (
 	DefaultMaxOutputTokens = 8192
 )
 
-// Default request timeouts for proxy calls.
+// Default request timeouts for proxy calls. Kept below common reverse-proxy
+// gateway limits (e.g. Cloudflare 100s) so the client and server stay in sync.
 const (
-	DefaultTimeout       = 10 * time.Minute
-	DefaultHeaderTimeout = 5 * time.Minute
-	DefaultChunkTimeout  = 15 * time.Minute
+	DefaultTimeout       = 90 * time.Second
+	DefaultHeaderTimeout = 90 * time.Second
+	DefaultChunkTimeout  = 90 * time.Second
 )
 
 // SessionConfig controls durable session behavior.

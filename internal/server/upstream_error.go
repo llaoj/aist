@@ -2,7 +2,9 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -31,11 +33,15 @@ type classifiedUpstreamError struct {
 	Summary    string
 }
 
-func classifyUpstreamError(status int, header http.Header, body []byte, now time.Time) classifiedUpstreamError {
+func classifyUpstreamError(status int, header http.Header, body []byte, cause error, now time.Time) classifiedUpstreamError {
 	if status == 0 {
+		summary := "upstream transport error"
+		if errors.Is(cause, context.DeadlineExceeded) {
+			summary = "upstream request timed out"
+		}
 		return classifiedUpstreamError{
 			Kind:    upstreamErrorKindTransient,
-			Summary: "upstream transport error",
+			Summary: summary,
 		}
 	}
 

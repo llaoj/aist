@@ -8,7 +8,11 @@ import (
 	"github.com/pocketbase/pocketbase/core"
 )
 
-const maxProxyBodyBytes int64 = 16 << 20
+const (
+	maxProxyBodyBytes           int64 = 16 << 20
+	defaultProxyRequestTimeout        = 85 * time.Second
+	defaultUpstreamModelTimeout       = 30 * time.Second
+)
 
 // APIOptions configures the server business logic.
 type APIOptions struct {
@@ -16,12 +20,20 @@ type APIOptions struct {
 	ClientDir string
 	// Now overrides time.Now in tests; nil uses time.Now.
 	Now func() time.Time
+	// ProxyRequestTimeout caps total elapsed time for one proxied chat request
+	// across all upstream model attempts. Zero uses defaultProxyRequestTimeout (85s).
+	ProxyRequestTimeout time.Duration
+	// UpstreamModelTimeout caps elapsed time for a single upstream model attempt
+	// before failing over to the next model. Zero uses defaultUpstreamModelTimeout (30s).
+	UpstreamModelTimeout time.Duration
 }
 
 // API wires the business dependencies used by the HTTP handlers.
 type API struct {
-	clientDir string
-	nowFunc   func() time.Time
+	clientDir            string
+	nowFunc              func() time.Time
+	proxyRequestTimeout  time.Duration
+	upstreamModelTimeout time.Duration
 }
 
 // NewAPI builds the server business logic from opts.
@@ -34,9 +46,19 @@ func NewAPI(opts APIOptions) *API {
 	if nowFunc == nil {
 		nowFunc = time.Now
 	}
+	proxyRequestTimeout := opts.ProxyRequestTimeout
+	if proxyRequestTimeout <= 0 {
+		proxyRequestTimeout = defaultProxyRequestTimeout
+	}
+	upstreamModelTimeout := opts.UpstreamModelTimeout
+	if upstreamModelTimeout <= 0 {
+		upstreamModelTimeout = defaultUpstreamModelTimeout
+	}
 	return &API{
-		clientDir: clientDir,
-		nowFunc:   nowFunc,
+		clientDir:            clientDir,
+		nowFunc:              nowFunc,
+		proxyRequestTimeout:  proxyRequestTimeout,
+		upstreamModelTimeout: upstreamModelTimeout,
 	}
 }
 

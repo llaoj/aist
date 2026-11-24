@@ -53,6 +53,5 @@ Stored in `users.settings` and `invite_codes.settings` on the server:
 
 | Timeout | Value |
 |---|---|
-| Overall completion request timeout | `10m` |
-| Response header timeout | `5m` |
-| Response body read timeout | `15m` |
+| Client overall completion timeout (including retries) | `90s` |
+| Server total proxy budget / per-candidate timeout | `85s` / `30s` |
