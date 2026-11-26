@@ -11,6 +11,8 @@ import (
 	"net"
 	"net/http"
 	"time"
+
+	"github.com/llaoj/aist/internal/buildinfo"
 )
 
 // ErrAuthentication marks authentication failures that should not be retried.
@@ -189,6 +191,7 @@ func (o *OpenAICompatibleModel) doRequest(ctx context.Context, body []byte) (*ht
 
 func (o *OpenAICompatibleModel) applyHeaders(ctx context.Context, req *http.Request) error {
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", buildinfo.UserAgent())
 	token := o.apiKey
 	if o.accessTokenSource != nil {
 		value, err := o.accessTokenSource.AccessToken(ctx)

@@ -17,6 +17,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/llaoj/aist/internal/buildinfo"
 )
 
 // DefaultServerURL is the built-in server used when nothing else is configured.
@@ -356,6 +358,7 @@ func (c *Client) request(ctx context.Context, method, path string, payload any, 
 		req.Header.Set("Content-Type", "application/json")
 	}
 	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", buildinfo.UserAgent())
 	if bearer != "" {
 		req.Header.Set("Authorization", "Bearer "+bearer)
 	}

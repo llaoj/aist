@@ -9,6 +9,8 @@ import (
 	"os"
 	"os/exec"
 	"testing"
+
+	"github.com/llaoj/aist/internal/buildinfo"
 )
 
 func TestOpenAIModelSendsInjectedToolDefinition(t *testing.T) {
@@ -143,5 +145,26 @@ func TestOpenAIModelUsesProxyFromEnvironment(t *testing.T) {
 	}
 	if proxiedURI != "http://upstream.invalid/v1/chat/completions" {
 		t.Fatalf("proxied URI = %q, want http://upstream.invalid/v1/chat/completions", proxiedURI)
+	}
+}
+
+func TestOpenAIModelSetsDefaultUserAgent(t *testing.T) {
+	model, err := NewOpenAICompatibleModel(ProviderSpec{
+		ID:        "p/m",
+		BaseURL:   "https://example.com/v1",
+		ModelName: "m",
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, "https://example.com/v1/chat/completions", nil)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	if err := model.applyHeaders(context.Background(), req); err != nil {
+		t.Fatalf("applyHeaders: %v", err)
+	}
+	if got := req.Header.Get("User-Agent"); got != buildinfo.UserAgent() {
+		t.Fatalf("User-Agent = %q, want %q", got, buildinfo.UserAgent())
 	}
 }

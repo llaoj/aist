@@ -9,6 +9,8 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/llaoj/aist/internal/buildinfo"
 )
 
 func TestNewClientTrimsServer(t *testing.T) {
@@ -240,13 +242,14 @@ func TestTokenExpiry(t *testing.T) {
 }
 
 func TestAccountUsageOKAndNotFound(t *testing.T) {
-	var gotAuth string
+	var gotAuth, gotUserAgent string
 	return404 := false
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != accountUsagePath || r.Method != http.MethodGet {
 			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
 		}
 		gotAuth = r.Header.Get("Authorization")
+		gotUserAgent = r.Header.Get("User-Agent")
 		if return404 {
 			w.WriteHeader(http.StatusNotFound)
 			_, _ = w.Write([]byte(`{"message":"Not Found."}`))
@@ -272,6 +275,9 @@ func TestAccountUsageOKAndNotFound(t *testing.T) {
 	}
 	if gotAuth != "Bearer token-xyz" {
 		t.Fatalf("Authorization = %q", gotAuth)
+	}
+	if gotUserAgent != buildinfo.UserAgent() {
+		t.Fatalf("User-Agent = %q, want %q", gotUserAgent, buildinfo.UserAgent())
 	}
 	if usage.UsedTokens != 42180 || usage.WeeklyTokenQuota != 500000 || usage.RemainingTokens == nil || *usage.RemainingTokens != 457820 || usage.Requests != 12 {
 		t.Fatalf("usage = %+v", usage)
