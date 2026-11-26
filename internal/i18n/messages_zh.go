@@ -58,8 +58,7 @@ var ChineseMessages = map[string]string{
 	"error.no_available_model_retry": "当前没有可用的模型（上游额度耗尽或限流），预计 %s 后恢复",
 	"error.upstream_unavailable":     "上游模型服务暂时不可用，请稍后再试",
 	"error.invalid_request":          "请求无效，请检查输入或开启新会话",
-	"error.invalid_request_context":  "请求超出模型上下文长度限制，请开启新会话或精简输入",
-	"error.invalid_request_safety":   "请求内容被上游安全策略拦截，请调整输入后重试",
+	"error.invalid_request_detail":   "上游拒绝了请求: %s",
 
 	// Login messages
 	"login.quick_start_title":       "快速开始:",

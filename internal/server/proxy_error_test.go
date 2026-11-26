@@ -70,17 +70,14 @@ func TestProxyStructuredErrorCodes(t *testing.T) {
 		t.Fatalf("malformed json detail = %+v", detail)
 	}
 
-	// 3. Upstream 400 context length -> 400 invalid_request with sanitized message (no model name leak).
+	// 3. Upstream 400 -> 400 invalid_request with extracted upstream error message.
 	w = doJSON(t, h, http.MethodPost, "/v1/proxy/chat/completions", "Bearer "+login.Token, reqBody)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400", w.Code)
 	}
 	detail := decodeProxyError(t, w.Body.Bytes())
-	if detail.Code != proxyErrorCodeInvalidRequest || detail.Message != "context length exceeded" {
+	if detail.Code != proxyErrorCodeInvalidRequest || !strings.Contains(detail.Message, "maximum context length") {
 		t.Fatalf("context 400 detail = %+v", detail)
-	}
-	if strings.Contains(w.Body.String(), "Qwen-Secret") {
-		t.Fatalf("leaked upstream model name: %s", w.Body.String())
 	}
 
 	// 4. Upstream 500 -> 502 upstream_unavailable.

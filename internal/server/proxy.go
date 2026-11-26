@@ -87,7 +87,7 @@ func (s *API) handleChatCompletions(e *core.RequestEvent) error {
 		failureNow := s.now()
 		classified := classifyUpstreamError(res.status, res.header, res.body, res.err, failureNow)
 		if classified.Kind == upstreamErrorKindBadRequest {
-			return respondProxyError(e, http.StatusBadRequest, proxyErrorCodeInvalidRequest, sanitizeBadRequestMessage(res.body), time.Time{})
+			return respondProxyError(e, http.StatusBadRequest, proxyErrorCodeInvalidRequest, classified.Summary, time.Time{})
 		}
 		if classified.Kind == upstreamErrorKindTransient {
 			sawTransient = true
@@ -176,6 +176,7 @@ func (s *API) forwardCandidate(proxyCtx context.Context, e *core.RequestEvent, b
 			"provider", candidate.Provider,
 			"model", candidate.Model,
 			"status", resp.StatusCode,
+			"detail", summarizeUpstreamError(resp.StatusCode, respBody),
 		)
 		return forwardResult{
 			status: resp.StatusCode,

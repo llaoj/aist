@@ -61,14 +61,23 @@ func TestRenderErrorMessageLocalized(t *testing.T) {
 			wantEnSub: "temporarily unavailable",
 		},
 		{
-			name: "invalid_request_context_length",
+			name: "invalid_request_with_upstream_detail",
 			err: &llm.StatusError{
 				StatusCode: 400,
 				ErrorCode:  llm.ErrorCodeInvalidRequest,
-				Message:    "context length exceeded",
+				Message:    "This model's maximum context length is 65536 tokens.",
 			},
-			wantZhSub: "上下文长度",
-			wantEnSub: "context window",
+			wantZhSub: "上游拒绝了请求: This model's maximum context length is 65536 tokens.",
+			wantEnSub: "Request rejected: This model's maximum context length is 65536 tokens.",
+		},
+		{
+			name: "invalid_request_empty_message_fallback",
+			err: &llm.StatusError{
+				StatusCode: 400,
+				ErrorCode:  llm.ErrorCodeInvalidRequest,
+			},
+			wantZhSub: "请求无效",
+			wantEnSub: "Invalid request",
 		},
 		{
 			name:      "authentication_expired",

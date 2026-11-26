@@ -1,7 +1,6 @@
 package server
 
 import (
-	"strings"
 	"time"
 
 	"github.com/pocketbase/pocketbase/core"
@@ -46,39 +45,4 @@ func earliestModelRetryAt(candidates []modelCandidate, now time.Time) time.Time 
 		}
 	}
 	return earliest
-}
-
-func sanitizeBadRequestMessage(body []byte) string {
-	code, errType, message := parseUpstreamErrorBody(body)
-	combined := strings.ToLower(code + " " + errType + " " + message)
-
-	for _, marker := range []string{
-		"context_length_exceeded",
-		"maximum context length",
-		"context window",
-		"prompt is too long",
-		"too many tokens",
-		"max_tokens",
-		"上下文长度",
-		"最大长度",
-	} {
-		if strings.Contains(combined, marker) {
-			return "context length exceeded"
-		}
-	}
-
-	for _, marker := range []string{
-		"content_filter",
-		"data_inspection_failed",
-		"content_policy",
-		"safety",
-		"敏感",
-		"安全审核",
-	} {
-		if strings.Contains(combined, marker) {
-			return "content blocked by upstream safety policy"
-		}
-	}
-
-	return "upstream rejected the request"
 }

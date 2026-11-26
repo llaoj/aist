@@ -45,35 +45,25 @@ func classifyUpstreamError(status int, header http.Header, body []byte, cause er
 		}
 	}
 
-	code, errType, message := parseUpstreamErrorBody(body)
-	summary := truncateBytes(util.FirstNonEmpty(message, code, errType, fmt.Sprintf("HTTP %d", status)), maxUpstreamErrorSummaryBytes)
+	summary := summarizeUpstreamError(status, body)
 
-	switch {
-	case status == http.StatusPaymentRequired:
+	switch status {
+	case http.StatusPaymentRequired:
 		return classifiedUpstreamError{Kind: upstreamErrorKindQuota, Summary: summary}
 
-	case status == http.StatusTooManyRequests:
-		if isQuotaExhausted(code, errType, message) {
-			return classifiedUpstreamError{Kind: upstreamErrorKindQuota, Summary: summary}
-		}
+	case http.StatusTooManyRequests:
 		return classifiedUpstreamError{
 			Kind:       upstreamErrorKindRateLimit,
 			RetryAfter: parseRetryAfter(header, now),
 			Summary:    summary,
 		}
 
-	case status == http.StatusUnauthorized:
+	case http.StatusUnauthorized, http.StatusForbidden:
 		return classifiedUpstreamError{Kind: upstreamErrorKindAuth, Summary: summary}
 
-	case status == http.StatusForbidden:
-		if isQuotaExhausted(code, errType, message) {
-			return classifiedUpstreamError{Kind: upstreamErrorKindQuota, Summary: summary}
-		}
-		return classifiedUpstreamError{Kind: upstreamErrorKindAuth, Summary: summary}
-
-	case status == http.StatusBadRequest,
-		status == http.StatusRequestEntityTooLarge,
-		status == http.StatusUnprocessableEntity:
+	case http.StatusBadRequest,
+		http.StatusRequestEntityTooLarge,
+		http.StatusUnprocessableEntity:
 		return classifiedUpstreamError{Kind: upstreamErrorKindBadRequest, Summary: summary}
 
 	default:
@@ -81,18 +71,28 @@ func classifyUpstreamError(status int, header http.Header, body []byte, cause er
 	}
 }
 
+func summarizeUpstreamError(status int, body []byte) string {
+	code, errType, message := parseUpstreamErrorBody(body)
+	return truncateBytes(util.FirstNonEmpty(message, code, errType, fmt.Sprintf("HTTP %d", status)), maxUpstreamErrorSummaryBytes)
+}
+
 func parseUpstreamErrorBody(body []byte) (code, errType, message string) {
 	trimmed := bytes.TrimSpace(body)
 	if len(trimmed) == 0 {
 		return "", "", ""
 	}
+	if trimmed[0] == '[' {
+		return parseErrorArray(trimmed)
+	}
 
 	var payload struct {
 		Error   json.RawMessage `json:"error"`
 		Errors  json.RawMessage `json:"errors"`
+		Detail  json.RawMessage `json:"detail"`
 		Code    json.RawMessage `json:"code"`
 		Type    string          `json:"type"`
 		Message string          `json:"message"`
+		Msg     string          `json:"msg"`
 	}
 	if err := json.Unmarshal(trimmed, &payload); err != nil {
 		return "", "", ""
@@ -100,19 +100,30 @@ func parseUpstreamErrorBody(body []byte) (code, errType, message string) {
 
 	code = decodeCodeValue(payload.Code)
 	errType = strings.TrimSpace(payload.Type)
-	message = strings.TrimSpace(payload.Message)
+	message = util.FirstNonEmpty(strings.TrimSpace(payload.Message), strings.TrimSpace(payload.Msg))
 
-	if nestedCode, nestedType, nestedMsg := parseErrorNode(payload.Error); nestedCode != "" || nestedType != "" || nestedMsg != "" {
-		code = util.FirstNonEmpty(nestedCode, code)
-		errType = util.FirstNonEmpty(nestedType, errType)
-		message = util.FirstNonEmpty(nestedMsg, message)
-	}
-	if nestedCode, nestedType, nestedMsg := parseErrorNode(payload.Errors); nestedCode != "" || nestedType != "" || nestedMsg != "" {
-		code = util.FirstNonEmpty(nestedCode, code)
-		errType = util.FirstNonEmpty(nestedType, errType)
-		message = util.FirstNonEmpty(nestedMsg, message)
+	for _, raw := range []json.RawMessage{payload.Error, payload.Errors, payload.Detail} {
+		if nestedCode, nestedType, nestedMsg := parseErrorNode(raw); nestedCode != "" || nestedType != "" || nestedMsg != "" {
+			code = util.FirstNonEmpty(nestedCode, code)
+			errType = util.FirstNonEmpty(nestedType, errType)
+			message = util.FirstNonEmpty(nestedMsg, message)
+		}
 	}
 	return code, errType, message
+}
+
+func parseErrorArray(raw []byte) (code, errType, message string) {
+	var items []json.RawMessage
+	if err := json.Unmarshal(raw, &items); err != nil {
+		return "", "", ""
+	}
+	for _, item := range items {
+		c, t, m := parseErrorNode(item)
+		if c != "" || t != "" || m != "" {
+			return c, t, m
+		}
+	}
+	return "", "", ""
 }
 
 func parseErrorNode(raw json.RawMessage) (code, errType, message string) {
@@ -120,22 +131,20 @@ func parseErrorNode(raw json.RawMessage) (code, errType, message string) {
 	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) {
 		return "", "", ""
 	}
-	if trimmed[0] == '"' {
+	switch trimmed[0] {
+	case '"':
 		var text string
 		if err := json.Unmarshal(trimmed, &text); err == nil {
 			return "", "", strings.TrimSpace(text)
 		}
 		return "", "", ""
-	}
-	var node struct {
-		Code    json.RawMessage `json:"code"`
-		Type    string          `json:"type"`
-		Message string          `json:"message"`
-	}
-	if err := json.Unmarshal(trimmed, &node); err != nil {
+	case '[':
+		return parseErrorArray(trimmed)
+	case '{':
+		return parseUpstreamErrorBody(trimmed)
+	default:
 		return "", "", ""
 	}
-	return decodeCodeValue(node.Code), strings.TrimSpace(node.Type), strings.TrimSpace(node.Message)
 }
 
 func decodeCodeValue(raw json.RawMessage) string {
@@ -150,51 +159,6 @@ func decodeCodeValue(raw json.RawMessage) string {
 		}
 	}
 	return string(trimmed)
-}
-
-func isQuotaExhausted(code, errType, message string) bool {
-	lowerCode := strings.ToLower(code)
-	lowerType := strings.ToLower(errType)
-
-	for _, marker := range []string{
-		"insufficient_quota",
-		"insufficient_balance",
-		"billing_hard_limit_reached",
-		"accountquotaexceeded",
-		"freetierquotaexceeded",
-		"setlimitexceeded",
-		"accountoverdueerror",
-		"quota_exceeded",
-	} {
-		if strings.Contains(lowerCode, marker) || strings.Contains(lowerType, marker) {
-			return true
-		}
-	}
-
-	switch lowerCode {
-	case "1113", "30001", "30011", "quotaexceeded":
-		return true
-	}
-
-	lowerMsg := strings.ToLower(message)
-	for _, phrase := range []string{
-		"insufficient balance",
-		"balance is insufficient",
-		"exceeded your current quota",
-		"exceeded the monthly usage quota",
-		"daily quota",
-		"today's quota",
-		"free quota",
-		"余额不足",
-		"账户已欠费",
-		"无可用资源包",
-		"免费额度",
-	} {
-		if strings.Contains(lowerMsg, phrase) {
-			return true
-		}
-	}
-	return false
 }
 
 func parseRetryAfter(header http.Header, now time.Time) time.Duration {

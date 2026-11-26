@@ -658,7 +658,7 @@ func TestProxyBadRequestDoesNotFallback(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls++
 		w.WriteHeader(http.StatusBadRequest)
-		_, _ = w.Write([]byte(`{"error":"missing tool_call_id secret detail"}`))
+		_, _ = w.Write([]byte(`{"error":"missing tool_call_id"}`))
 	}))
 	defer upstream.Close()
 
@@ -681,7 +681,7 @@ func TestProxyBadRequestDoesNotFallback(t *testing.T) {
 	if calls != 1 {
 		t.Fatalf("upstream calls = %d, want 1 (400 must not trigger fallback)", calls)
 	}
-	if strings.Contains(w.Body.String(), "secret detail") {
-		t.Fatalf("upstream error leaked: %s", w.Body.String())
+	if !strings.Contains(w.Body.String(), "missing tool_call_id") {
+		t.Fatalf("expected extracted upstream error message, got: %s", w.Body.String())
 	}
 }

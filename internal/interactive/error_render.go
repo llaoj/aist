@@ -2,6 +2,7 @@ package interactive
 
 import (
 	"errors"
+	"strings"
 
 	"github.com/llaoj/aist/internal/llm"
 	"github.com/llaoj/aist/internal/tools"
@@ -47,14 +48,10 @@ func RenderErrorMessage(translator tools.Translator, err error) string {
 		return translator.T("error.upstream_unavailable")
 
 	case llm.ErrorCodeInvalidRequest:
-		switch status.Message {
-		case "context length exceeded":
-			return translator.T("error.invalid_request_context")
-		case "content blocked by upstream safety policy":
-			return translator.T("error.invalid_request_safety")
-		default:
-			return translator.T("error.invalid_request")
+		if msg := strings.TrimSpace(status.Message); msg != "" {
+			return translator.T("error.invalid_request_detail", msg)
 		}
+		return translator.T("error.invalid_request")
 	}
 
 	return err.Error()

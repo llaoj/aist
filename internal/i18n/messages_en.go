@@ -58,8 +58,7 @@ var EnglishMessages = map[string]string{
 	"error.no_available_model_retry": "No model is currently available (upstream quota or rate limit); retry after %s",
 	"error.upstream_unavailable":     "Upstream model service is temporarily unavailable; please try again later",
 	"error.invalid_request":          "Invalid request; check your input or start a new session",
-	"error.invalid_request_context":  "Request exceeds the model context window; start a new session or shorten your input",
-	"error.invalid_request_safety":   "Request blocked by upstream safety policy; adjust your input and try again",
+	"error.invalid_request_detail":   "Request rejected: %s",
 
 	// Login messages
 	"login.quick_start_title":       "Quick start:",
