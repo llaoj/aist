@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -139,7 +140,7 @@ func (s *API) forwardCandidate(proxyCtx context.Context, e *core.RequestEvent, b
 	}
 	baseURL := strings.TrimRight(provider.GetString("base_url"), "/")
 
-	forwardBody, err := rewriteModel(body, candidate.Model, candidate.MaxOutputTokens)
+	forwardBody, err := rewriteForwardBody(body, baseURL, candidate.Model, candidate.MaxOutputTokens)
 	if err != nil {
 		return forwardResult{err: err}
 	}
@@ -221,9 +222,12 @@ func validateChatBody(body []byte) error {
 	return nil
 }
 
-// rewriteModel replaces the request body's "model" field with the bare model
-// name and clamps max_tokens to the candidate's output limit.
-func rewriteModel(body []byte, modelName string, maxOutputTokens int) ([]byte, error) {
+const geminiSkipThoughtSignature = "skip_thought_signature_validator"
+
+// rewriteForwardBody replaces the request body's "model" field with the bare
+// model name, clamps max_tokens to the candidate's output limit, and fills
+// missing Gemini thought_signature fields when forwarding to Google Gemini.
+func rewriteForwardBody(body []byte, baseURL, modelName string, maxOutputTokens int) ([]byte, error) {
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal(body, &fields); err != nil {
 		return nil, err
@@ -251,7 +255,121 @@ func rewriteModel(body []byte, modelName string, maxOutputTokens int) ([]byte, e
 		}
 	}
 
+	if isGoogleGeminiUpstream(baseURL, modelName) {
+		if err := ensureGeminiThoughtSignatures(fields); err != nil {
+			return nil, err
+		}
+	}
+
 	return json.Marshal(fields)
+}
+
+func isGoogleGeminiUpstream(baseURL, modelName string) bool {
+	if parsed, err := url.Parse(baseURL); err == nil {
+		host := strings.ToLower(parsed.Hostname())
+		if host == "generativelanguage.googleapis.com" || strings.HasSuffix(host, ".googleapis.com") {
+			return true
+		}
+	}
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(modelName)), "gemini-")
+}
+
+// ensureGeminiThoughtSignatures injects Google's skip_thought_signature_validator
+// sentinel into historical tool_calls that lack a thought_signature so Gemini 3.x
+// accepts history produced by other models during failover or older clients.
+func ensureGeminiThoughtSignatures(fields map[string]json.RawMessage) error {
+	rawMessages, ok := fields["messages"]
+	if !ok || len(rawMessages) == 0 {
+		return nil
+	}
+	var messages []map[string]json.RawMessage
+	if err := json.Unmarshal(rawMessages, &messages); err != nil {
+		return nil
+	}
+
+	changed := false
+	skipSigRaw, err := json.Marshal(geminiSkipThoughtSignature)
+	if err != nil {
+		return err
+	}
+
+	for i, msg := range messages {
+		if msg == nil {
+			continue
+		}
+		rawCalls, ok := msg["tool_calls"]
+		if !ok || len(rawCalls) == 0 {
+			continue
+		}
+		var toolCalls []map[string]json.RawMessage
+		if err := json.Unmarshal(rawCalls, &toolCalls); err != nil {
+			continue
+		}
+
+		msgChanged := false
+		for j, tc := range toolCalls {
+			if tc == nil {
+				continue
+			}
+			var extraContent map[string]json.RawMessage
+			if rawExtra, exists := tc["extra_content"]; exists && len(rawExtra) > 0 {
+				_ = json.Unmarshal(rawExtra, &extraContent)
+			}
+			if extraContent == nil {
+				extraContent = make(map[string]json.RawMessage)
+			}
+
+			var googleExt map[string]json.RawMessage
+			if rawGoogle, exists := extraContent["google"]; exists && len(rawGoogle) > 0 {
+				_ = json.Unmarshal(rawGoogle, &googleExt)
+			}
+			if googleExt == nil {
+				googleExt = make(map[string]json.RawMessage)
+			}
+
+			var existingSig string
+			if rawSig, exists := googleExt["thought_signature"]; exists && len(rawSig) > 0 {
+				_ = json.Unmarshal(rawSig, &existingSig)
+			}
+			if strings.TrimSpace(existingSig) != "" {
+				continue
+			}
+
+			googleExt["thought_signature"] = skipSigRaw
+			encodedGoogle, err := json.Marshal(googleExt)
+			if err != nil {
+				return err
+			}
+			extraContent["google"] = encodedGoogle
+			encodedExtra, err := json.Marshal(extraContent)
+			if err != nil {
+				return err
+			}
+			tc["extra_content"] = encodedExtra
+			toolCalls[j] = tc
+			msgChanged = true
+		}
+
+		if msgChanged {
+			encodedCalls, err := json.Marshal(toolCalls)
+			if err != nil {
+				return err
+			}
+			msg["tool_calls"] = encodedCalls
+			messages[i] = msg
+			changed = true
+		}
+	}
+
+	if !changed {
+		return nil
+	}
+	encodedMessages, err := json.Marshal(messages)
+	if err != nil {
+		return err
+	}
+	fields["messages"] = encodedMessages
+	return nil
 }
 
 // toRawJSON converts a JSON field value (types.JSONRaw, []byte, string) to bytes.
