@@ -141,3 +141,91 @@ func TestRunScriptPOSIXAndPlatformDetection(t *testing.T) {
 		})
 	}
 }
+
+func TestRunScriptFetchRetry(t *testing.T) {
+	raw := checkPOSIXScript(t, "run.sh")
+	libScript := strings.TrimSuffix(strings.TrimSpace(raw), "\nmain")
+
+	t.Run("retries transient curl failure under set -e", func(t *testing.T) {
+		dir := t.TempDir()
+		countFile := filepath.Join(dir, "count")
+		outFile := filepath.Join(dir, "out.txt")
+
+		harness := libScript + "\n" +
+			"sleep() { :; }\n" +
+			"curl() {\n" +
+			"  out=''\n" +
+			"  while [ $# -gt 0 ]; do\n" +
+			"    if [ \"$1\" = '-o' ]; then out=\"$2\"; shift 2; continue; fi\n" +
+			"    shift\n" +
+			"  done\n" +
+			"  n=0\n" +
+			"  [ -f '" + countFile + "' ] && n=$(cat '" + countFile + "')\n" +
+			"  n=$((n + 1))\n" +
+			"  printf '%s' \"$n\" > '" + countFile + "'\n" +
+			"  if [ \"$n\" -lt 3 ]; then\n" +
+			"    printf 'partial' > \"$out\"\n" +
+			"    return 35\n" +
+			"  fi\n" +
+			"  printf 'verified-body' > \"$out\"\n" +
+			"  return 0\n" +
+			"}\n" +
+			"fetch_url https://example.com/checksums.txt '" + outFile + "'\n"
+
+		cmd := exec.Command("/bin/sh", "-e", "-c", harness)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("fetch_url failed: %v\n%s", err, out)
+		}
+		gotBody, err := os.ReadFile(outFile)
+		if err != nil {
+			t.Fatalf("read output: %v", err)
+		}
+		if string(gotBody) != "verified-body" {
+			t.Fatalf("output = %q, want %q", string(gotBody), "verified-body")
+		}
+		gotCount, err := os.ReadFile(countFile)
+		if err != nil {
+			t.Fatalf("read count: %v", err)
+		}
+		if string(gotCount) != "3" {
+			t.Fatalf("attempt count = %q, want %q", string(gotCount), "3")
+		}
+	})
+
+	t.Run("stops after max attempts on persistent failure", func(t *testing.T) {
+		dir := t.TempDir()
+		countFile := filepath.Join(dir, "count")
+		outFile := filepath.Join(dir, "out.txt")
+
+		harness := libScript + "\n" +
+			"sleep() { :; }\n" +
+			"curl() {\n" +
+			"  n=0\n" +
+			"  [ -f '" + countFile + "' ] && n=$(cat '" + countFile + "')\n" +
+			"  n=$((n + 1))\n" +
+			"  printf '%s' \"$n\" > '" + countFile + "'\n" +
+			"  return 35\n" +
+			"}\n" +
+			"if fetch_url_progress https://example.com/aist.tar.gz '" + outFile + "'; then\n" +
+			"  exit 0\n" +
+			"else\n" +
+			"  exit 42\n" +
+			"fi\n"
+
+		cmd := exec.Command("/bin/sh", "-e", "-c", harness)
+		err := cmd.Run()
+		if err == nil {
+			t.Fatal("expected failure after max attempts")
+		}
+		if !strings.Contains(err.Error(), "exit status 42") {
+			t.Fatalf("err = %v, want exit status 42", err)
+		}
+		gotCount, err := os.ReadFile(countFile)
+		if err != nil {
+			t.Fatalf("read count: %v", err)
+		}
+		if string(gotCount) != "3" {
+			t.Fatalf("attempt count = %q, want %q", string(gotCount), "3")
+		}
+	})
+}

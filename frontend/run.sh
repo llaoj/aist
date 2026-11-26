@@ -54,36 +54,61 @@ print_error() {
     printf '%b\n' "${RED}✗${NC} $1" >&2
 }
 
-fetch_url() {
-    local url="$1"
-    local output="$2"
+fetch_with_retry() {
+    local mode="$1"
+    local url="$2"
+    local output="$3"
+    local attempt=1
+    local max_attempts=3
 
-    if command -v curl >/dev/null 2>&1; then
-        curl -fsSL "$url" -o "$output"
-    elif command -v wget >/dev/null 2>&1; then
-        wget -q -O "$output" "$url"
-    else
-        print_error "Neither curl nor wget found. Please install one of them."
-        return 1
-    fi
+    while [ "$attempt" -le "$max_attempts" ]; do
+        rm -f "$output"
+        if command -v curl >/dev/null 2>&1; then
+            if [ "$mode" = "progress" ]; then
+                if curl -fL -# "$url" -o "$output"; then
+                    return 0
+                fi
+            else
+                if curl -fsSL "$url" -o "$output"; then
+                    return 0
+                fi
+            fi
+        elif command -v wget >/dev/null 2>&1; then
+            if [ "$mode" = "progress" ]; then
+                if wget --help 2>&1 | grep -q -- '--show-progress'; then
+                    if wget -q --show-progress -O "$output" "$url"; then
+                        return 0
+                    fi
+                else
+                    if wget -O "$output" "$url"; then
+                        return 0
+                    fi
+                fi
+            else
+                if wget -q -O "$output" "$url"; then
+                    return 0
+                fi
+            fi
+        else
+            print_error "Neither curl nor wget found. Please install one of them."
+            return 1
+        fi
+
+        if [ "$attempt" -lt "$max_attempts" ]; then
+            sleep 1
+        fi
+        attempt=$((attempt + 1))
+    done
+
+    return 1
+}
+
+fetch_url() {
+    fetch_with_retry "quiet" "$1" "$2"
 }
 
 fetch_url_progress() {
-    local url="$1"
-    local output="$2"
-
-    if command -v curl >/dev/null 2>&1; then
-        curl -fL -# "$url" -o "$output"
-    elif command -v wget >/dev/null 2>&1; then
-        if wget --help 2>&1 | grep -q -- '--show-progress'; then
-            wget -q --show-progress -O "$output" "$url"
-        else
-            wget -O "$output" "$url"
-        fi
-    else
-        print_error "Neither curl nor wget found. Please install one of them."
-        return 1
-    fi
+    fetch_with_retry "progress" "$1" "$2"
 }
 
 # Return a sanitized version string, or fail if it is not a valid tag.
