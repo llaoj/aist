@@ -46,7 +46,7 @@ Judgment examples:
 ## Targets
 - Omit target to run on the local machine.
 - Set target (host, IP, user@host, or SSH alias) when the user or Memory names that host, or when a command you actually ran discovered it (for example kubectl get nodes).
-- Always run remote commands by setting target and placing the plain remote command in command. Do NOT omit target and wrap commands in manual "ssh <host> '...'" locally (even if the user says "ssh to <host>"), except when multi-hop chaining cannot be expressed via target.
+- Always run remote commands by setting target and placing the plain remote command in command. Do NOT omit target and wrap commands in manual "ssh <host> '...'" or "timeout ... ssh ..." locally (even if the user says "ssh to <host>"), except when multi-hop chaining cannot be expressed via target. The SSH runner already sets ConnectTimeout=10.
 - Never invent a target and do not scrape known_hosts, ssh config, hosts files or inventories to guess one.
 - SSH aliases and user@host targets are resolved by the system ssh client.
 

@@ -173,3 +173,84 @@ func TestRunInteractiveTTYForwardsInput(t *testing.T) {
 		t.Fatalf("output = %q, want GOT:hello_world", output)
 	}
 }
+
+func TestRunInteractiveTTYSingleCtrlCForwardsToChild(t *testing.T) {
+	outerMaster, outerSlave, err := pty.Open()
+	if err != nil {
+		t.Skipf("pty unavailable: %v", err)
+	}
+	defer outerMaster.Close()
+
+	_ = pty.Setsize(outerMaster, &pty.Winsize{Rows: 24, Cols: 80})
+
+	readerDone := make(chan struct{})
+	go func() {
+		defer close(readerDone)
+		buf := make([]byte, 256)
+		sent := false
+		for {
+			n, readErr := outerMaster.Read(buf)
+			if n > 0 && !sent && strings.Contains(string(buf[:n]), "READY") {
+				sent = true
+				_, _ = outerMaster.Write([]byte{ctrlCByte})
+			}
+			if readErr != nil {
+				return
+			}
+		}
+	}()
+
+	cmd := exec.Command("sh", "-c", `trap 'echo CAUGHT_INT; exit 0' INT; sleep 10 & pid=$!; echo READY; wait "$pid"`)
+	output, runErr := runInteractiveTTY(context.Background(), int(outerSlave.Fd()), cmd, outerSlave, 5*time.Second, 300*time.Millisecond, 0)
+	_ = outerSlave.Close()
+	<-readerDone
+
+	if runErr != nil {
+		t.Fatalf("runInteractiveTTY: %v (output=%q)", runErr, output)
+	}
+	if !strings.Contains(output, "CAUGHT_INT") {
+		t.Fatalf("output = %q, want CAUGHT_INT", output)
+	}
+}
+
+func TestRunInteractiveTTYDoubleCtrlCForceInterruptsStuckCommand(t *testing.T) {
+	outerMaster, outerSlave, err := pty.Open()
+	if err != nil {
+		t.Skipf("pty unavailable: %v", err)
+	}
+	defer outerMaster.Close()
+
+	_ = pty.Setsize(outerMaster, &pty.Winsize{Rows: 24, Cols: 80})
+
+	readerDone := make(chan struct{})
+	go func() {
+		defer close(readerDone)
+		buf := make([]byte, 256)
+		sent := false
+		for {
+			n, readErr := outerMaster.Read(buf)
+			if n > 0 && !sent && strings.Contains(string(buf[:n]), "READY") {
+				sent = true
+				_, _ = outerMaster.Write([]byte{ctrlCByte})
+				time.Sleep(100 * time.Millisecond)
+				_, _ = outerMaster.Write([]byte{ctrlCByte})
+			}
+			if readErr != nil {
+				return
+			}
+		}
+	}()
+
+	start := time.Now()
+	cmd := exec.Command("sh", "-c", `trap '' INT TERM; echo READY; sleep 30`)
+	_, runErr := runInteractiveTTY(context.Background(), int(outerSlave.Fd()), cmd, outerSlave, 15*time.Second, 300*time.Millisecond, 0)
+	_ = outerSlave.Close()
+	<-readerDone
+
+	if !errors.Is(runErr, ErrCommandInterrupted) {
+		t.Fatalf("runErr = %v, want ErrCommandInterrupted", runErr)
+	}
+	if elapsed := time.Since(start); elapsed > 6*time.Second {
+		t.Fatalf("force interrupt took too long: %s", elapsed)
+	}
+}

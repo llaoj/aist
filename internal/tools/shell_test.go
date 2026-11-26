@@ -37,8 +37,8 @@ func TestShellExecuteDefinitionIncludesTarget(t *testing.T) {
 	if !strings.Contains(def.Description, "kubectl get nodes") {
 		t.Fatalf("description missing discovered-target rule: %s", def.Description)
 	}
-	if !strings.Contains(def.Description, `manual "ssh <host>`) {
-		t.Fatalf("description missing no-manual-ssh rule: %s", def.Description)
+	if !strings.Contains(def.Description, `manual "ssh <host>`) || !strings.Contains(def.Description, "ConnectTimeout=10") {
+		t.Fatalf("description missing no-manual-ssh / ConnectTimeout rule: %s", def.Description)
 	}
 	if !strings.Contains(def.Description, "Interactive PTY execution") || !strings.Contains(def.Description, "sudo") {
 		t.Fatalf("description missing interactive/sudo support: %s", def.Description)

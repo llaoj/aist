@@ -100,6 +100,15 @@ func TestLocalErrorMappingExitCodes(t *testing.T) {
 	if !errors.As(err, &stuckErr) || !errors.Is(err, ErrStuckExit) || !strings.Contains(err.Error(), "did not exit") {
 		t.Fatalf("stuck error = %v", err)
 	}
+
+	result = CommandResult{Target: "local"}
+	err = runner.resultError(&result, ErrCommandInterrupted)
+	if result.ExitCode != exitCodeInterrupted {
+		t.Fatalf("interrupted exit code = %d, want %d", result.ExitCode, exitCodeInterrupted)
+	}
+	if !errors.Is(err, ErrCommandInterrupted) {
+		t.Fatalf("interrupted error = %v, want ErrCommandInterrupted", err)
+	}
 }
 
 func TestWaitInteractiveExitGrace(t *testing.T) {
@@ -111,7 +120,7 @@ func TestWaitInteractiveExitGrace(t *testing.T) {
 
 	outputDone := make(chan struct{})
 	close(outputDone)
-	err := waitInteractive(context.Background(), cmd, nil, startWait(cmd), 0, 50*time.Millisecond, outputDone)
+	err := waitInteractive(context.Background(), cmd, nil, startWait(cmd), 0, 50*time.Millisecond, outputDone, nil)
 	if !errors.Is(err, ErrStuckExit) {
 		t.Fatalf("err = %v, want ErrStuckExit", err)
 	}

@@ -55,6 +55,9 @@ var ErrCommandTimeout = errors.New("command timed out")
 // ErrStuckExit means a command finished output but did not exit within grace time.
 var ErrStuckExit = errors.New("command did not exit after its output ended")
 
+// ErrCommandInterrupted means the user force-interrupted a running command.
+var ErrCommandInterrupted = errors.New("command interrupted by user")
+
 // TimeoutError reports that a command exceeded its configured timeout.
 type TimeoutError struct {
 	Timeout time.Duration

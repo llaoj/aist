@@ -17,6 +17,11 @@ import (
 	"golang.org/x/term"
 )
 
+const (
+	ctrlCByte            = 0x03
+	forceInterruptWindow = time.Second
+)
+
 func isTerminalInput() bool {
 	return term.IsTerminal(int(os.Stdin.Fd()))
 }
@@ -91,13 +96,19 @@ func runInteractiveTTY(ctx context.Context, fd int, cmd *exec.Cmd, display io.Wr
 		displayBroken = copyPTYOutput(ptmx, display, outputBuf)
 	}()
 
+	forceInterrupt := make(chan struct{})
+	var forceInterruptOnce sync.Once
+	triggerForceInterrupt := func() {
+		forceInterruptOnce.Do(func() { close(forceInterrupt) })
+	}
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		copyTerminalInput(fd, ptmx, done)
+		copyTerminalInput(fd, ptmx, done, triggerForceInterrupt)
 	}()
 
-	err = waitInteractive(ctx, cmd, ptmx, startWait(cmd), timeout, exitGrace, outputDone)
+	err = waitInteractive(ctx, cmd, ptmx, startWait(cmd), timeout, exitGrace, outputDone, forceInterrupt)
 
 	// Let the output copier drain, then release the PTY so any blocked read
 	// returns. Waits are bounded so a stuck terminal write cannot hang us.
@@ -147,8 +158,8 @@ func copyPTYOutput(ptmx io.Reader, display io.Writer, outputBuf *lockedBuffer) (
 }
 
 // waitInteractive waits for the command while enforcing the hard timeout, the
-// context deadline and the post-output exit grace.
-func waitInteractive(ctx context.Context, cmd *exec.Cmd, ptmx *os.File, waitCh <-chan error, timeout, exitGrace time.Duration, outputDone <-chan struct{}) error {
+// context deadline, double Ctrl+C force-interrupt, and the post-output exit grace.
+func waitInteractive(ctx context.Context, cmd *exec.Cmd, ptmx *os.File, waitCh <-chan error, timeout, exitGrace time.Duration, outputDone, forceInterrupt <-chan struct{}) error {
 	var ctxDone <-chan struct{}
 	if ctx != nil {
 		ctxDone = ctx.Done()
@@ -177,6 +188,9 @@ func waitInteractive(ctx context.Context, cmd *exec.Cmd, ptmx *os.File, waitCh <
 		case <-ctxDone:
 			terminatePTYProcess(cmd, ptmx, waitCh)
 			return ctx.Err()
+		case <-forceInterrupt:
+			terminatePTYProcess(cmd, ptmx, waitCh)
+			return ErrCommandInterrupted
 		case <-timeoutCh:
 			terminatePTYProcess(cmd, ptmx, waitCh)
 			return ErrCommandTimeout
@@ -205,18 +219,33 @@ func waitGroup(wg *sync.WaitGroup, timeout time.Duration) {
 	}
 }
 
-func copyTerminalInput(fd int, ptmx *os.File, done <-chan struct{}) {
+func copyTerminalInput(fd int, ptmx *os.File, done <-chan struct{}, onForceInterrupt func()) {
 	reader, err := termio.NewReader(fd, done)
 	if err != nil {
 		return
 	}
 	defer reader.Close()
 
+	var lastCtrlC time.Time
 	buf := make([]byte, 128)
 	for {
 		n, readErr := reader.Read(buf)
 		if n > 0 {
-			if writeErr := termio.WriteAll(ptmx, buf[:n]); writeErr != nil {
+			chunk := buf[:n]
+			if onForceInterrupt != nil {
+				for _, b := range chunk {
+					if b != ctrlCByte {
+						continue
+					}
+					now := time.Now()
+					if !lastCtrlC.IsZero() && now.Sub(lastCtrlC) <= forceInterruptWindow {
+						onForceInterrupt()
+						return
+					}
+					lastCtrlC = now
+				}
+			}
+			if writeErr := termio.WriteAll(ptmx, chunk); writeErr != nil {
 				return
 			}
 		}

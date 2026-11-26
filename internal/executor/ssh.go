@@ -92,6 +92,10 @@ func (s *SSHRunner) Execute(ctx context.Context, req CommandRequest) (CommandRes
 	if errors.Is(ctx.Err(), context.Canceled) {
 		return result, ctx.Err()
 	}
+	if errors.Is(err, ErrCommandInterrupted) {
+		result.ExitCode = exitCodeInterrupted
+		return result, ErrCommandInterrupted
+	}
 	if errors.Is(err, ErrStuckExit) {
 		result.ExitCode = exitCodeKilled
 		return result, &StuckExitError{Grace: DefaultExitGrace}
@@ -112,7 +116,7 @@ var errNotTerminal = errors.New("stdin is not a terminal")
 
 func sshArgs(allocateTTY bool, host, command string) []string {
 	if allocateTTY {
-		return []string{"-t", "-o", "LogLevel=ERROR", host, command}
+		return []string{"-t", "-o", "ConnectTimeout=10", "-o", "LogLevel=ERROR", host, command}
 	}
-	return []string{"-o", "LogLevel=ERROR", host, command}
+	return []string{"-o", "ConnectTimeout=10", "-o", "LogLevel=ERROR", host, command}
 }

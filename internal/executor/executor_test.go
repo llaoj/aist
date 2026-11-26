@@ -26,16 +26,17 @@ func newFakeSSH(t *testing.T) string {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "ssh")
 	script := `#!/bin/sh
+opts=""
 while [ $# -gt 2 ]; do
   case "$1" in
-    -o) shift 2 ;;
-    -*) shift ;;
+    -o) opts="$opts -o $2"; shift 2 ;;
+    -*) opts="$opts $1"; shift ;;
     *) break ;;
   esac
 done
 target="$1"
 command="$2"
-printf 'target=%s\ncommand=%s\n' "$target" "$command"
+printf 'opts=%s\ntarget=%s\ncommand=%s\n' "$opts" "$target" "$command"
 case "$target" in
   down)
     echo "ssh: connect to host $target port 22: Connection refused" >&2
@@ -69,7 +70,7 @@ func TestSSHExecuteCapturesOutputAndExitCode(t *testing.T) {
 	if result.Target != "web1" || result.ExitCode != 0 {
 		t.Fatalf("result = %+v", result)
 	}
-	for _, want := range []string{"target=web1", "df -h", "PAGER=cat", "ok"} {
+	for _, want := range []string{"-o ConnectTimeout=10", "-o LogLevel=ERROR", "target=web1", "df -h", "PAGER=cat", "ok"} {
 		if !strings.Contains(result.Output, want) {
 			t.Fatalf("output = %q, want %q", result.Output, want)
 		}
@@ -163,13 +164,13 @@ func TestRouterDispatchesByTarget(t *testing.T) {
 
 func TestSSHArgsAllocateRemoteTTYWhenInteractive(t *testing.T) {
 	withTTY := sshArgs(true, "web1", "sudo systemctl restart nginx")
-	wantWithTTY := []string{"-t", "-o", "LogLevel=ERROR", "web1", "sudo systemctl restart nginx"}
+	wantWithTTY := []string{"-t", "-o", "ConnectTimeout=10", "-o", "LogLevel=ERROR", "web1", "sudo systemctl restart nginx"}
 	if strings.Join(withTTY, "\x00") != strings.Join(wantWithTTY, "\x00") {
 		t.Fatalf("sshArgs(true) = %#v, want %#v", withTTY, wantWithTTY)
 	}
 
 	withoutTTY := sshArgs(false, "web1", "df -h")
-	wantWithoutTTY := []string{"-o", "LogLevel=ERROR", "web1", "df -h"}
+	wantWithoutTTY := []string{"-o", "ConnectTimeout=10", "-o", "LogLevel=ERROR", "web1", "df -h"}
 	if strings.Join(withoutTTY, "\x00") != strings.Join(wantWithoutTTY, "\x00") {
 		t.Fatalf("sshArgs(false) = %#v, want %#v", withoutTTY, wantWithoutTTY)
 	}

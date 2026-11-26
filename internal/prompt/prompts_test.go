@@ -104,6 +104,8 @@ func TestToolPolicyCoversWhenAndSafety(t *testing.T) {
 		"sudo=true",
 		"Prompt-based interactive commands",
 		"Full-screen TUI programs",
+		"ConnectTimeout=10",
+		"timeout --foreground -k 3",
 		"MEMORY_BLOCK",
 	} {
 		if !strings.Contains(out, want) {

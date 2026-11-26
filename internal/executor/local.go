@@ -24,6 +24,8 @@ const (
 const (
 	// exitCodeTimeout follows the timeout(1) convention for timed out commands.
 	exitCodeTimeout = 124
+	// exitCodeInterrupted follows the shell convention for SIGINT (128 + 2).
+	exitCodeInterrupted = 130
 	// exitCodeKilled follows the shell convention for a SIGKILL (128 + 9).
 	exitCodeKilled = 137
 )
@@ -102,6 +104,9 @@ func (r *LocalRunner) resultError(result *CommandResult, err error) error {
 	case errors.Is(err, ErrCommandTimeout):
 		result.ExitCode = exitCodeTimeout
 		return &TimeoutError{Timeout: r.opts.Timeout}
+	case errors.Is(err, ErrCommandInterrupted):
+		result.ExitCode = exitCodeInterrupted
+		return ErrCommandInterrupted
 	case errors.Is(err, ErrStuckExit):
 		result.ExitCode = exitCodeKilled
 		return &StuckExitError{Grace: r.opts.ExitGrace}
