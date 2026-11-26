@@ -1,7 +1,9 @@
 package server
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"time"
@@ -60,9 +62,35 @@ type modelCandidate struct {
 	Priority          int
 	ContextWindow     int
 	MaxOutputTokens   int
+	ExtraBody         map[string]json.RawMessage
 	UnavailableUntil  time.Time
 	UnavailableReason string
 	LastError         string
+}
+
+func decodeModelExtraBody(raw any) (map[string]json.RawMessage, error) {
+	if raw == nil {
+		return nil, nil
+	}
+	data, err := toRawJSON(raw)
+	if err != nil {
+		return nil, err
+	}
+	trimmed := bytes.TrimSpace(data)
+	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) {
+		return nil, nil
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(trimmed, &fields); err != nil {
+		return nil, fmt.Errorf("invalid model extra_body: %w", err)
+	}
+	if fields == nil {
+		return nil, errors.New("model extra_body must be a JSON object")
+	}
+	if len(fields) == 0 {
+		return nil, nil
+	}
+	return fields, nil
 }
 
 func decodeUserSettings(raw any) (userSettings, error) {
@@ -149,6 +177,13 @@ func loadUserCandidates(app core.App, record *core.Record) ([]modelCandidate, er
 		if provider == nil || !provider.GetBool("enabled") {
 			continue
 		}
+		extraBody, extraErr := decodeModelExtraBody(model.Get("extra_body"))
+		if extraErr != nil {
+			app.Logger().Warn("ignoring invalid model extra_body",
+				"model", model.GetString("name"),
+				"error", extraErr.Error(),
+			)
+		}
 		candidates = append(candidates, modelCandidate{
 			ModelID:           model.Id,
 			ProviderID:        provider.Id,
@@ -157,6 +192,7 @@ func loadUserCandidates(app core.App, record *core.Record) ([]modelCandidate, er
 			Priority:          model.GetInt("priority"),
 			ContextWindow:     model.GetInt("context_window"),
 			MaxOutputTokens:   model.GetInt("max_output_tokens"),
+			ExtraBody:         extraBody,
 			UnavailableUntil:  model.GetDateTime("unavailable_until").Time(),
 			UnavailableReason: model.GetString("unavailable_reason"),
 			LastError:         model.GetString("last_error"),

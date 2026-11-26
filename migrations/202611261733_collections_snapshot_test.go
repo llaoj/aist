@@ -75,12 +75,15 @@ func TestInitialCollectionsSnapshot(t *testing.T) {
 	assertFields(t, models,
 		[]string{
 			"provider", "display_name", "name", "priority",
-			"context_window", "max_output_tokens", "enabled",
+			"context_window", "max_output_tokens", "extra_body", "enabled",
 			"unavailable_until", "unavailable_reason", "last_error",
 			"created", "updated",
 		},
 		nil,
 	)
+	if extraBodyField, ok := models.Fields.GetByName("extra_body").(*core.JSONField); !ok || extraBodyField == nil {
+		t.Fatalf("extra_body is not a JSONField")
+	}
 	reasonField, ok := models.Fields.GetByName("unavailable_reason").(*core.SelectField)
 	if !ok || reasonField == nil {
 		t.Fatalf("unavailable_reason is not a SelectField")

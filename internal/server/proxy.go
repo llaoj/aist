@@ -140,7 +140,7 @@ func (s *API) forwardCandidate(proxyCtx context.Context, e *core.RequestEvent, b
 	}
 	baseURL := strings.TrimRight(provider.GetString("base_url"), "/")
 
-	forwardBody, err := rewriteForwardBody(body, baseURL, candidate.Model, candidate.MaxOutputTokens)
+	forwardBody, err := rewriteForwardBody(body, baseURL, candidate.Model, candidate.MaxOutputTokens, candidate.ExtraBody)
 	if err != nil {
 		return forwardResult{err: err}
 	}
@@ -224,16 +224,22 @@ func validateChatBody(body []byte) error {
 
 const geminiSkipThoughtSignature = "skip_thought_signature_validator"
 
-// rewriteForwardBody replaces the request body's "model" field with the bare
-// model name, clamps max_tokens to the candidate's output limit, and fills
-// missing Gemini thought_signature fields when forwarding to Google Gemini.
-func rewriteForwardBody(body []byte, baseURL, modelName string, maxOutputTokens int) ([]byte, error) {
+// rewriteForwardBody merges model-level extra_body fields, replaces "model"
+// with the bare model name, clamps max_tokens to the candidate's output limit,
+// and fills missing Gemini thought_signature fields when forwarding to Google.
+func rewriteForwardBody(body []byte, baseURL, modelName string, maxOutputTokens int, extraBody map[string]json.RawMessage) ([]byte, error) {
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal(body, &fields); err != nil {
 		return nil, err
 	}
 	if fields == nil {
 		return nil, errors.New("request body must be a JSON object")
+	}
+	for key, value := range extraBody {
+		if key == "model" || key == "messages" {
+			continue
+		}
+		fields[key] = value
 	}
 	model, err := json.Marshal(modelName)
 	if err != nil {

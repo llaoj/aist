@@ -34,7 +34,7 @@ func TestRewriteForwardBodyInjectsGeminiThoughtSignatures(t *testing.T) {
 		]
 	}`)
 
-	rewritten, err := rewriteForwardBody(reqBody, "https://generativelanguage.googleapis.com/v1beta/openai", "gemini-3.8-flash", 8192)
+	rewritten, err := rewriteForwardBody(reqBody, "https://generativelanguage.googleapis.com/v1beta/openai", "gemini-3.8-flash", 8192, nil)
 	if err != nil {
 		t.Fatalf("rewriteForwardBody: %v", err)
 	}
@@ -96,7 +96,7 @@ func TestRewriteForwardBodySkipsNonGeminiUpstreams(t *testing.T) {
 		]
 	}`)
 
-	rewritten, err := rewriteForwardBody(reqBody, "https://api.deepseek.com/v1", "deepseek-chat", 4096)
+	rewritten, err := rewriteForwardBody(reqBody, "https://api.deepseek.com/v1", "deepseek-chat", 4096, nil)
 	if err != nil {
 		t.Fatalf("rewriteForwardBody: %v", err)
 	}
@@ -130,6 +130,72 @@ func TestIsGoogleGeminiUpstream(t *testing.T) {
 	for _, tt := range tests {
 		if got := isGoogleGeminiUpstream(tt.baseURL, tt.model); got != tt.want {
 			t.Fatalf("isGoogleGeminiUpstream(%q, %q) = %v, want %v", tt.baseURL, tt.model, got, tt.want)
+		}
+	}
+}
+
+func TestRewriteForwardBodyMergesExtraBodyAndProtectsCoreFields(t *testing.T) {
+	reqBody := []byte(`{
+		"model": "auto",
+		"messages": [{"role": "user", "content": "check disk"}],
+		"max_tokens": 16384
+	}`)
+	extraBody, err := decodeModelExtraBody(`{
+		"thinking": {"type": "disabled"},
+		"enable_thinking": false,
+		"model": "hijacked-model",
+		"messages": [{"role": "user", "content": "hijacked"}]
+	}`)
+	if err != nil {
+		t.Fatalf("decodeModelExtraBody: %v", err)
+	}
+
+	rewritten, err := rewriteForwardBody(reqBody, "https://api.deepseek.com/v1", "deepseek-flash", 8192, extraBody)
+	if err != nil {
+		t.Fatalf("rewriteForwardBody: %v", err)
+	}
+
+	var payload struct {
+		Model          string `json:"model"`
+		MaxTokens      int    `json:"max_tokens"`
+		EnableThinking *bool  `json:"enable_thinking"`
+		Thinking       struct {
+			Type string `json:"type"`
+		} `json:"thinking"`
+		Messages []struct {
+			Content string `json:"content"`
+		} `json:"messages"`
+	}
+	if err := json.Unmarshal(rewritten, &payload); err != nil {
+		t.Fatalf("unmarshal rewritten: %v", err)
+	}
+	if payload.Model != "deepseek-flash" {
+		t.Fatalf("model = %q, want deepseek-flash", payload.Model)
+	}
+	if payload.MaxTokens != 8192 {
+		t.Fatalf("max_tokens = %d, want 8192", payload.MaxTokens)
+	}
+	if payload.Thinking.Type != "disabled" {
+		t.Fatalf("thinking.type = %q, want disabled", payload.Thinking.Type)
+	}
+	if payload.EnableThinking == nil || *payload.EnableThinking {
+		t.Fatalf("enable_thinking = %v, want false", payload.EnableThinking)
+	}
+	if len(payload.Messages) != 1 || payload.Messages[0].Content != "check disk" {
+		t.Fatalf("messages were overwritten: %+v", payload.Messages)
+	}
+}
+
+func TestDecodeModelExtraBody(t *testing.T) {
+	for _, empty := range []any{nil, "", "  ", "null", "{}"} {
+		got, err := decodeModelExtraBody(empty)
+		if err != nil || got != nil {
+			t.Fatalf("decodeModelExtraBody(%v) = (%v, %v), want (nil, nil)", empty, got, err)
+		}
+	}
+	for _, invalid := range []any{`["not-an-object"]`, `"string"`, `{bad json`} {
+		if _, err := decodeModelExtraBody(invalid); err == nil {
+			t.Fatalf("decodeModelExtraBody(%v) succeeded, want error", invalid)
 		}
 	}
 }

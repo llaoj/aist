@@ -451,6 +451,17 @@ func init() {
 						"type": "number"
 					},
 					{
+						"help": "Optional JSON object merged into upstream /chat/completions requests (e.g. {\"thinking\":{\"type\":\"disabled\"}}).",
+						"hidden": false,
+						"id": "json1842673519",
+						"maxSize": 65536,
+						"name": "extra_body",
+						"presentable": false,
+						"required": false,
+						"system": false,
+						"type": "json"
+					},
+					{
 						"help": "",
 						"hidden": false,
 						"id": "bool1358543748",
