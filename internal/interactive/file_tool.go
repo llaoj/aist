@@ -75,7 +75,7 @@ func (s *Session) applyFileEdit(ctx context.Context, callID string, args tools.F
 		s.appendFileEditReport(ctx, callID, args, tools.ToolOutcomeFailed, err.Error(), "The previous file was kept.")
 		return
 	}
-	s.renderer.RenderNotice(NoticeLevelSuccess, "✓ Updated file: "+change.LocationLabel())
+	s.renderer.RenderNotice(NoticeLevelSuccess, s.translator.T("file_edit.updated", change.LocationLabel()))
 	s.appendFileEditReport(ctx, callID, args, tools.ToolOutcomeSuccess, "", "File updated successfully after user confirmation.")
 }
 

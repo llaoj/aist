@@ -225,7 +225,7 @@ func TestReplayHistoryReproducesLiveTerminalView(t *testing.T) {
 	}
 
 	joinedNotices := strings.Join(recorder.notices, "\n")
-	if !strings.Contains(joinedNotices, "✓ Updated file: [web1] /etc/nginx/nginx.conf (sudo)") {
+	if !strings.Contains(joinedNotices, "✓ 已更新文件: [web1] /etc/nginx/nginx.conf (sudo)") {
 		t.Fatalf("missing file update notice in %+v", recorder.notices)
 	}
 	if !strings.Contains(joinedNotices, "✓ 已记住: prod-web — prod nginx") {

@@ -201,7 +201,7 @@ func (s *Session) replayFileEdit(message session.Message, entry replayedToolCall
 
 	switch message.ToolOutcome {
 	case session.ToolOutcomeSuccess:
-		s.renderer.RenderNotice(NoticeLevelSuccess, "✓ Updated file: "+change.LocationLabel())
+		s.renderer.RenderNotice(NoticeLevelSuccess, s.translator.T("file_edit.updated", change.LocationLabel()))
 	case session.ToolOutcomeRejected:
 		s.renderer.RenderNotice(NoticeLevelInfo, s.translator.T("interactive.reject_remaining_hint"))
 		*toolsDispatched = false

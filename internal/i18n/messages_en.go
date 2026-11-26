@@ -134,4 +134,5 @@ var EnglishMessages = map[string]string{
 	// File edit messages
 	"file_edit.confirm":        "Apply this change to %s?",
 	"file_edit.modify_warning": "Warning: This will modify %s, are you sure?",
+	"file_edit.updated":        "✓ Updated file: %s",
 }

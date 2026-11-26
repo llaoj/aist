@@ -134,4 +134,5 @@ var ChineseMessages = map[string]string{
 	// File edit messages
 	"file_edit.confirm":        "是否应用对 %s 的修改？",
 	"file_edit.modify_warning": "警告: 该操作将修改 %s，是否确定执行？",
+	"file_edit.updated":        "✓ 已更新文件: %s",
 }
