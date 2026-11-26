@@ -31,6 +31,12 @@ func TestShellExecuteDefinitionIncludesTarget(t *testing.T) {
 	if !strings.Contains(schema, `"target"`) || !strings.Contains(schema, "Never invent a target") {
 		t.Fatalf("schema = %s", schema)
 	}
+	if strings.Index(schema, `"target"`) >= strings.Index(schema, `"command"`) {
+		t.Fatalf("expected target to appear before command in schema: %s", schema)
+	}
+	if !strings.Contains(schema, "do NOT prefix it with 'ssh ") {
+		t.Fatalf("command property missing no-ssh-prefix rule: %s", schema)
+	}
 	if !strings.Contains(def.Description, "## Targets") {
 		t.Fatalf("description missing target rules: %s", def.Description)
 	}

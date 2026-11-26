@@ -5,13 +5,7 @@ import (
 	"strings"
 )
 
-// shellExecuteToolDef is the canonical description of the shell_execute tool.
-// Callers convert ShellExecuteDefinition into their wire-specific format.
-var shellExecuteToolDef = map[string]any{
-	"type": "function",
-	"function": map[string]any{
-		"name": ToolShellExecute,
-		"description": `Execute a shell command step to help answer the user's operations question.
+const shellExecuteDescription = `Execute a shell command step to help answer the user's operations question.
 ## Command Classification Criteria
 When calling shell_execute, set command_type based on actual behavior, wrong classification leads to user misoperation:
 
@@ -54,41 +48,73 @@ Judgment examples:
 - Interactive PTY execution: commands run in a real PTY attached to the user's terminal (locally and over ssh -t). Prompt-based interactive commands (such as sudo, ssh/MFA, passwd, package managers, and [y/N] confirmations) are supported.
 - Full-screen TUI programs are prohibited and blocked at runtime: NEVER run full-screen editors (vi, vim, nvim, nano, emacs, visudo, crontab -e), full-screen pagers/monitors (less, more, htop, btop, watch, file managers, or top without -b or -l <samples>), or interactive tmux/screen sessions. Use file_edit to create or edit files (supports remote target and sudo=true).
 - Non-paging / bounded inspection: pass non-paging or bounded flags where appropriate (for example --no-pager, top -b -n 1 on Linux / top -l 1 on macOS, ping -c 4, tail -n 100) so diagnostics finish automatically.
-- System differences: consider OS differences (Linux/macOS), use compatible commands, avoid OS-specific syntax`,
-		"parameters": map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"step_index": map[string]any{
-					"type":        "integer",
-					"description": "Step sequence number, starting from 1",
-				},
-				"reason": map[string]any{
-					"type":        "string",
-					"description": "One-sentence explanation of what this command does and why it is needed",
-				},
-				"command": map[string]any{
-					"type":        "string",
-					"description": "The raw executable shell command only. **Do NOT include commentary, natural-language explanations, step numbers, or markdown fences.**",
-				},
-				"command_type": map[string]any{
-					"type":        "string",
-					"enum":        []string{"query", "modify"},
-					"description": "query=read-only/no side effects, modify=changes system state, must follow classification rules above",
-				},
-				"target": map[string]any{
-					"type":        "string",
-					"description": "Optional SSH host, IP, user@host, or alias from the user, Memory, or a command you actually ran. Omit for the local machine. Use this instead of wrapping commands in manual 'ssh <host> ...'. Never invent a target.",
-				},
-			},
-			"required": []string{"step_index", "reason", "command", "command_type"},
-		},
-	},
+- System differences: consider OS differences (Linux/macOS), use compatible commands, avoid OS-specific syntax`
+
+type shellSchemaProperty struct {
+	Type        string   `json:"type"`
+	Enum        []string `json:"enum,omitempty"`
+	Description string   `json:"description"`
 }
+
+// shellSchemaProperties uses a struct instead of a map so JSON serialization
+// emits target BEFORE command, preventing left-to-right models from writing a
+// manual "ssh <host> ..." prefix before deciding on target.
+type shellSchemaProperties struct {
+	StepIndex   shellSchemaProperty `json:"step_index"`
+	Reason      shellSchemaProperty `json:"reason"`
+	Target      shellSchemaProperty `json:"target"`
+	CommandType shellSchemaProperty `json:"command_type"`
+	Command     shellSchemaProperty `json:"command"`
+}
+
+type shellInputSchema struct {
+	Type       string                `json:"type"`
+	Properties shellSchemaProperties `json:"properties"`
+	Required   []string              `json:"required"`
+}
+
+var shellExecuteSchemaJSON = func() json.RawMessage {
+	raw, err := json.Marshal(shellInputSchema{
+		Type: "object",
+		Properties: shellSchemaProperties{
+			StepIndex: shellSchemaProperty{
+				Type:        "integer",
+				Description: "Step sequence number, starting from 1",
+			},
+			Reason: shellSchemaProperty{
+				Type:        "string",
+				Description: "One-sentence explanation of what this command does and why it is needed",
+			},
+			Target: shellSchemaProperty{
+				Type:        "string",
+				Description: "Optional SSH host, IP, user@host, or alias from the user, Memory, or a command you actually ran. Omit for the local machine. Use this instead of wrapping commands in manual 'ssh <host> ...'. Never invent a target.",
+			},
+			CommandType: shellSchemaProperty{
+				Type:        "string",
+				Enum:        []string{"query", "modify"},
+				Description: "query=read-only/no side effects, modify=changes system state, must follow classification rules above",
+			},
+			Command: shellSchemaProperty{
+				Type:        "string",
+				Description: "The raw executable shell command only. When target is set, this command already runs on that remote host—do NOT prefix it with 'ssh <host>'. **Do NOT include commentary, natural-language explanations, step numbers, or markdown fences.**",
+			},
+		},
+		Required: []string{"step_index", "reason", "command", "command_type"},
+	})
+	if err != nil {
+		panic(err)
+	}
+	return raw
+}()
 
 // ShellExecuteDefinition returns the shell_execute tool definition in a
 // protocol-neutral form.
 func ShellExecuteDefinition() Definition {
-	return definitionFromMap(shellExecuteToolDef)
+	return Definition{
+		Name:        ToolShellExecute,
+		Description: shellExecuteDescription,
+		InputSchema: shellExecuteSchemaJSON,
+	}
 }
 
 // CommandType classifies a shell command as query (read-only) or modify (state-changing).
