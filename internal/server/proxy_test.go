@@ -22,15 +22,32 @@ func TestRewriteForwardBodyInjectsGeminiThoughtSignatures(t *testing.T) {
 					{
 						"id": "call_2",
 						"type": "function",
-						"function": {"name": "shell_execute", "arguments": "{\"command\":\"hostname\"}"},
+						"function": {"name": "shell_execute", "arguments": "{\"command\":\"hostname\"}"}
+					}
+				]
+			},
+			{"role": "tool", "tool_call_id": "call_1", "content": "ok"},
+			{"role": "tool", "tool_call_id": "call_2", "content": "node1"},
+			{
+				"role": "assistant",
+				"content": null,
+				"tool_calls": [
+					{
+						"id": "call_3",
+						"type": "function",
+						"function": {"name": "shell_execute", "arguments": "{\"command\":\"uptime\"}"},
 						"extra_content": {
 							"google": {"thought_signature": "real-sig-abc", "other": 1},
 							"custom": true
 						}
+					},
+					{
+						"id": "call_4",
+						"type": "function",
+						"function": {"name": "shell_execute", "arguments": "{\"command\":\"date\"}"}
 					}
 				]
-			},
-			{"role": "tool", "tool_call_id": "call_1", "content": "ok"}
+			}
 		]
 	}`)
 
@@ -56,25 +73,34 @@ func TestRewriteForwardBodyInjectsGeminiThoughtSignatures(t *testing.T) {
 	if payload.Model != "gemini-3.8-flash" || payload.MaxTokens != 8192 {
 		t.Fatalf("model=%q max_tokens=%d", payload.Model, payload.MaxTokens)
 	}
-	calls := payload.Messages[1].ToolCalls
-	if len(calls) != 2 {
-		t.Fatalf("tool_calls len = %d, want 2", len(calls))
-	}
 
-	google0, _ := calls[0].ExtraContent["google"].(map[string]any)
+	// Turn 1: parallel tool_calls lacking signature -> ONLY first call gets skip_thought_signature_validator.
+	turn1Calls := payload.Messages[1].ToolCalls
+	if len(turn1Calls) != 2 {
+		t.Fatalf("turn1 tool_calls len = %d, want 2", len(turn1Calls))
+	}
+	google0, _ := turn1Calls[0].ExtraContent["google"].(map[string]any)
 	if got := google0["thought_signature"]; got != geminiSkipThoughtSignature {
 		t.Fatalf("call_1 thought_signature = %v, want %q", got, geminiSkipThoughtSignature)
 	}
+	if turn1Calls[1].ExtraContent != nil {
+		t.Fatalf("call_2 in parallel turn must NOT get extra_content, got %+v", turn1Calls[1].ExtraContent)
+	}
 
-	google1, _ := calls[1].ExtraContent["google"].(map[string]any)
-	if got := google1["thought_signature"]; got != "real-sig-abc" {
-		t.Fatalf("call_2 thought_signature = %v, want real-sig-abc", got)
+	// Turn 2: parallel tool_calls with real signature on first call -> preserved untouched.
+	turn2Calls := payload.Messages[4].ToolCalls
+	google3, _ := turn2Calls[0].ExtraContent["google"].(map[string]any)
+	if got := google3["thought_signature"]; got != "real-sig-abc" {
+		t.Fatalf("call_3 thought_signature = %v, want real-sig-abc", got)
 	}
-	if got := google1["other"]; got != float64(1) {
-		t.Fatalf("call_2 google.other = %v, want 1", got)
+	if got := google3["other"]; got != float64(1) {
+		t.Fatalf("call_3 google.other = %v, want 1", got)
 	}
-	if got := calls[1].ExtraContent["custom"]; got != true {
-		t.Fatalf("call_2 extra_content.custom = %v, want true", got)
+	if got := turn2Calls[0].ExtraContent["custom"]; got != true {
+		t.Fatalf("call_3 extra_content.custom = %v, want true", got)
+	}
+	if turn2Calls[1].ExtraContent != nil {
+		t.Fatalf("call_4 in parallel turn must NOT get extra_content, got %+v", turn2Calls[1].ExtraContent)
 	}
 }
 

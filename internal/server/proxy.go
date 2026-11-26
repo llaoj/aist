@@ -281,8 +281,10 @@ func isGoogleGeminiUpstream(baseURL, modelName string) bool {
 }
 
 // ensureGeminiThoughtSignatures injects Google's skip_thought_signature_validator
-// sentinel into historical tool_calls that lack a thought_signature so Gemini 3.x
-// accepts history produced by other models during failover or older clients.
+// sentinel into the first tool_call of any historical assistant message whose
+// tool_calls lack a thought_signature. Gemini 3.x requires the signature on the
+// first parallel functionCall only and rejects signatures on subsequent calls
+// in the same assistant turn.
 func ensureGeminiThoughtSignatures(fields map[string]json.RawMessage) error {
 	rawMessages, ok := fields["messages"]
 	if !ok || len(rawMessages) == 0 {
@@ -308,63 +310,51 @@ func ensureGeminiThoughtSignatures(fields map[string]json.RawMessage) error {
 			continue
 		}
 		var toolCalls []map[string]json.RawMessage
-		if err := json.Unmarshal(rawCalls, &toolCalls); err != nil {
+		if err := json.Unmarshal(rawCalls, &toolCalls); err != nil || len(toolCalls) == 0 || toolCalls[0] == nil {
 			continue
 		}
 
-		msgChanged := false
-		for j, tc := range toolCalls {
-			if tc == nil {
-				continue
-			}
-			var extraContent map[string]json.RawMessage
-			if rawExtra, exists := tc["extra_content"]; exists && len(rawExtra) > 0 {
-				_ = json.Unmarshal(rawExtra, &extraContent)
-			}
-			if extraContent == nil {
-				extraContent = make(map[string]json.RawMessage)
-			}
-
-			var googleExt map[string]json.RawMessage
-			if rawGoogle, exists := extraContent["google"]; exists && len(rawGoogle) > 0 {
-				_ = json.Unmarshal(rawGoogle, &googleExt)
-			}
-			if googleExt == nil {
-				googleExt = make(map[string]json.RawMessage)
-			}
-
-			var existingSig string
-			if rawSig, exists := googleExt["thought_signature"]; exists && len(rawSig) > 0 {
-				_ = json.Unmarshal(rawSig, &existingSig)
-			}
-			if strings.TrimSpace(existingSig) != "" {
-				continue
-			}
-
-			googleExt["thought_signature"] = skipSigRaw
-			encodedGoogle, err := json.Marshal(googleExt)
-			if err != nil {
-				return err
-			}
-			extraContent["google"] = encodedGoogle
-			encodedExtra, err := json.Marshal(extraContent)
-			if err != nil {
-				return err
-			}
-			tc["extra_content"] = encodedExtra
-			toolCalls[j] = tc
-			msgChanged = true
+		if hasAnyGeminiThoughtSignature(toolCalls) {
+			continue
 		}
 
-		if msgChanged {
-			encodedCalls, err := json.Marshal(toolCalls)
-			if err != nil {
-				return err
-			}
-			msg["tool_calls"] = encodedCalls
-			messages[i] = msg
-			changed = true
+		firstCall := toolCalls[0]
+		var extraContent map[string]json.RawMessage
+		if rawExtra, exists := firstCall["extra_content"]; exists && len(rawExtra) > 0 {
+			_ = json.Unmarshal(rawExtra, &extraContent)
 		}
+		if extraContent == nil {
+			extraContent = make(map[string]json.RawMessage)
+		}
+
+		var googleExt map[string]json.RawMessage
+		if rawGoogle, exists := extraContent["google"]; exists && len(rawGoogle) > 0 {
+			_ = json.Unmarshal(rawGoogle, &googleExt)
+		}
+		if googleExt == nil {
+			googleExt = make(map[string]json.RawMessage)
+		}
+
+		googleExt["thought_signature"] = skipSigRaw
+		encodedGoogle, err := json.Marshal(googleExt)
+		if err != nil {
+			return err
+		}
+		extraContent["google"] = encodedGoogle
+		encodedExtra, err := json.Marshal(extraContent)
+		if err != nil {
+			return err
+		}
+		firstCall["extra_content"] = encodedExtra
+		toolCalls[0] = firstCall
+
+		encodedCalls, err := json.Marshal(toolCalls)
+		if err != nil {
+			return err
+		}
+		msg["tool_calls"] = encodedCalls
+		messages[i] = msg
+		changed = true
 	}
 
 	if !changed {
@@ -376,6 +366,29 @@ func ensureGeminiThoughtSignatures(fields map[string]json.RawMessage) error {
 	}
 	fields["messages"] = encodedMessages
 	return nil
+}
+
+func hasAnyGeminiThoughtSignature(toolCalls []map[string]json.RawMessage) bool {
+	for _, tc := range toolCalls {
+		if tc == nil {
+			continue
+		}
+		var extraContent map[string]json.RawMessage
+		if rawExtra, exists := tc["extra_content"]; !exists || len(rawExtra) == 0 || json.Unmarshal(rawExtra, &extraContent) != nil {
+			continue
+		}
+		var googleExt map[string]json.RawMessage
+		if rawGoogle, exists := extraContent["google"]; !exists || len(rawGoogle) == 0 || json.Unmarshal(rawGoogle, &googleExt) != nil {
+			continue
+		}
+		var sig string
+		if rawSig, exists := googleExt["thought_signature"]; exists && len(rawSig) > 0 && json.Unmarshal(rawSig, &sig) == nil {
+			if strings.TrimSpace(sig) != "" {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // toRawJSON converts a JSON field value (types.JSONRaw, []byte, string) to bytes.
