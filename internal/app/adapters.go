@@ -15,13 +15,13 @@ import (
 type callHooks struct {
 	mu         sync.Mutex
 	translator *i18n.I18n
-	stop       func()
+	stop       func() error
 }
 
 func (h *callHooks) BeforeCall(cancel context.CancelFunc) {
 	stop := ui.StartSpinner(
 		h.translator.T("interactive.thinking"),
-		h.translator.T("interactive.esc_hint"),
+		h.translator.T("interactive.thinking_key_hint"),
 		cancel,
 	)
 	h.mu.Lock()
@@ -29,14 +29,15 @@ func (h *callHooks) BeforeCall(cancel context.CancelFunc) {
 	h.mu.Unlock()
 }
 
-func (h *callHooks) AfterCall() {
+func (h *callHooks) AfterCall() error {
 	h.mu.Lock()
 	stop := h.stop
 	h.stop = nil
 	h.mu.Unlock()
 	if stop != nil {
-		stop()
+		return stop()
 	}
+	return nil
 }
 
 // shellExecutor adapts executor.CommandRunner to the interactive shell port.

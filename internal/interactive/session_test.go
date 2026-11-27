@@ -84,18 +84,22 @@ func TestTruncateContent(t *testing.T) {
 
 type recordingScriptedModel struct {
 	responses []*llm.CompletionResponse
+	errors    []error
 	requests  []llm.CompletionRequest
 	index     int
 }
 
 func (m *recordingScriptedModel) Call(_ context.Context, req llm.CompletionRequest) (*llm.CompletionResponse, error) {
 	m.requests = append(m.requests, req)
-	if m.index >= len(m.responses) {
+	idx := m.index
+	m.index++
+	if idx < len(m.errors) && m.errors[idx] != nil {
+		return nil, m.errors[idx]
+	}
+	if idx >= len(m.responses) {
 		return &llm.CompletionResponse{Content: "done"}, nil
 	}
-	resp := m.responses[m.index]
-	m.index++
-	return resp, nil
+	return m.responses[idx], nil
 }
 
 func TestRunTurnForcesSummaryAtFollowUpLimitAndResumesCleanly(t *testing.T) {
@@ -585,4 +589,97 @@ func TestHeadlessPipeRequiresQuestionAndRunsWithoutTools(t *testing.T) {
 	if gotSys := llm.DerefPtr(model.requests[0].Messages[0].Content); gotSys != "system" {
 		t.Fatalf("headless pipe system prompt = %q, want unified 'system'", gotSys)
 	}
+}
+
+func TestSessionEscDuringThinkingCancelsTurnAndContinuesLoop(t *testing.T) {
+	model := &recordingScriptedModel{
+		responses: []*llm.CompletionResponse{
+			nil,
+			{Content: "Second answer.", Model: "p/m"},
+		},
+		errors: []error{
+			context.Canceled,
+			nil,
+		},
+	}
+	recorder := &turnRecorder{}
+	sess := NewSession(SessionOptions{
+		LLM:         model,
+		Translator:  i18n.New("zh"),
+		Mode:        ModeInteractive,
+		PromptSet:   staticPrompts{},
+		InputReader: &scriptedInput{inputs: []string{"第一个问题", "第二个问题"}},
+		Renderer:    recorder,
+	})
+
+	if err := sess.Run(""); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if len(model.requests) != 2 {
+		t.Fatalf("model calls = %d, want 2", len(model.requests))
+	}
+	if recorder.interruptedNotices != 1 {
+		t.Fatalf("interruptedNotices = %d, want 1", recorder.interruptedNotices)
+	}
+	if recorder.lastAssistantText() != "Second answer." {
+		t.Fatalf("lastAssistantText = %q, want Second answer.", recorder.lastAssistantText())
+	}
+	if len(recorder.notices) != 0 {
+		t.Fatalf("unexpected error notices: %+v", recorder.notices)
+	}
+}
+
+func TestSessionCtrlCDuringThinkingExitsCleanly(t *testing.T) {
+	t.Run("during interactive loop", func(t *testing.T) {
+		model := &recordingScriptedModel{
+			errors: []error{ErrInterrupted},
+		}
+		recorder := &turnRecorder{}
+		sess := NewSession(SessionOptions{
+			LLM:         model,
+			Translator:  i18n.New("zh"),
+			Mode:        ModeInteractive,
+			PromptSet:   staticPrompts{},
+			InputReader: &scriptedInput{inputs: []string{"第一个问题", "不应执行"}},
+			Renderer:    recorder,
+		})
+
+		if err := sess.Run(""); err != nil {
+			t.Fatalf("Run: %v, want nil on Ctrl+C", err)
+		}
+		if len(model.requests) != 1 {
+			t.Fatalf("model calls = %d, want 1 (session must exit immediately on Ctrl+C)", len(model.requests))
+		}
+		if recorder.interruptedNotices != 0 {
+			t.Fatalf("interruptedNotices = %d, want 0", recorder.interruptedNotices)
+		}
+		if len(recorder.notices) != 0 {
+			t.Fatalf("unexpected notices: %+v", recorder.notices)
+		}
+	})
+
+	t.Run("during initial question", func(t *testing.T) {
+		model := &recordingScriptedModel{
+			errors: []error{ErrInterrupted},
+		}
+		recorder := &turnRecorder{}
+		sess := NewSession(SessionOptions{
+			LLM:         model,
+			Translator:  i18n.New("zh"),
+			Mode:        ModeInteractive,
+			PromptSet:   staticPrompts{},
+			InputReader: &scriptedInput{inputs: []string{"不应执行"}},
+			Renderer:    recorder,
+		})
+
+		if err := sess.Run("初始问题"); err != nil {
+			t.Fatalf("Run with initialQuestion: %v, want nil on Ctrl+C", err)
+		}
+		if len(model.requests) != 1 {
+			t.Fatalf("model calls = %d, want 1", len(model.requests))
+		}
+		if recorder.interruptedNotices != 0 || len(recorder.notices) != 0 {
+			t.Fatalf("interruptedNotices=%d notices=%+v, want 0 and empty", recorder.interruptedNotices, recorder.notices)
+		}
+	})
 }

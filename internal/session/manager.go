@@ -278,7 +278,10 @@ func (s *Manager) CompactIfNeeded(ctx context.Context) error {
 		Messages:     middle,
 	})
 	if err != nil {
-		if s.onCompactionError != nil && !errors.Is(err, context.Canceled) && ctx.Err() == nil {
+		if errors.Is(err, context.Canceled) {
+			return err
+		}
+		if s.onCompactionError != nil && ctx.Err() == nil {
 			s.onCompactionError(err)
 		}
 		return nil

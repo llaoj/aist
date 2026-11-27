@@ -23,7 +23,7 @@ Wait-free autonomous loop within each turn:
    - **Skip this command / No**: skip this single step and continue remaining steps;
    - **Reject all and let me add details**: abort all remaining confirmation-gated steps in the current batch and immediately return to your input prompt so you can steer the investigation.
 3. User-confirmed steps (`Run` or `Skip`) never hit an artificial step wall; AIST only pauses if **15 consecutive unattended tool rounds** (`DefaultMaxAutoToolCalls = 15`, such as silent memory lookups or guard rejections) occur without human confirmation, so you can type `"continue"` or refine instructions.
-4. Press `Esc` anytime while the model is thinking to cancel the in-flight request without losing session history; press `Ctrl+C` at the prompt to save and exit.
+4. Press `Esc` anytime while the model is thinking to cancel the in-flight request without losing session history; press `Ctrl+C` at any time (while thinking, at the prompt, or in a confirmation menu) to exit.
 
 > [!NOTE]
 > Note that `aist "question"` on an interactive terminal enters interactive mode after answering your initial question so you can immediately follow up. Press `Ctrl+C` whenever you are done.

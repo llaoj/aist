@@ -6,9 +6,7 @@ import (
 	"io"
 	"os"
 	"strings"
-	"time"
 
-	"charm.land/lipgloss/v2"
 	"github.com/llaoj/aist/internal/termio"
 	"golang.org/x/term"
 )
@@ -95,45 +93,20 @@ func promptSelectTTY(in, out *os.File, prompt, keyHint string, options []string)
 }
 
 func renderSelect(out *os.File, prompt, keyHint string, options []string, selected int, final bool, prevRows int) int {
-	cols, _, _ := term.GetSize(int(out.Fd()))
-
-	var b strings.Builder
-	if prevRows > 0 {
-		fmt.Fprintf(&b, "\033[%dA\r\033[J", prevRows)
-	}
-
-	rows := 0
-	writeLine := func(line string) {
-		b.WriteString(line)
-		b.WriteString("\r\n")
-		if cols > 0 {
-			if w := lipgloss.Width(line); w > cols {
-				rows += (w + cols - 1) / cols
-				return
-			}
-		}
-		rows++
-	}
-
-	for _, line := range strings.Split(prompt, "\n") {
-		writeLine(line)
-	}
+	promptLines := strings.Split(prompt, "\n")
+	lines := make([]string, 0, len(promptLines)+len(options)+1)
+	lines = append(lines, promptLines...)
 	for i, option := range options {
 		if i == selected {
-			writeLine("> [x] " + option)
+			lines = append(lines, "> [x] "+option)
 		} else {
-			writeLine("  [ ] " + option)
+			lines = append(lines, "  [ ] "+option)
 		}
 	}
 	if !final && keyHint != "" {
-		writeLine(keyHintStyle.Sprint(keyHint))
+		lines = append(lines, keyHintStyle.Sprint(keyHint))
 	}
-	if final {
-		b.WriteString("\r\n")
-	}
-
-	_ = termio.WriteAll(out, []byte(b.String()))
-	return rows
+	return renderTerminalBlock(out, lines, final, prevRows)
 }
 
 func readSelectKey(reader *termio.Reader) (selectKey, error) {
@@ -144,40 +117,26 @@ func readSelectKey(reader *termio.Reader) (selectKey, error) {
 	}
 
 	switch b[0] {
-	case 0x03:
+	case keyCtrlC:
 		return selectKeyInterrupt, nil
 	case '\r', '\n':
 		return selectKeyEnter, nil
-	case 0x1b:
-		return readEscapeSequence(reader)
+	case keyEsc:
+		return readSelectEscapeKey(reader)
 	default:
 		return selectKeyIgnore, nil
 	}
 }
 
-func readEscapeSequence(reader *termio.Reader) (selectKey, error) {
-	var seq [16]byte
-	n := 0
-	wait := 25 * time.Millisecond
-
-	for n < len(seq) {
-		read, err := reader.ReadTimeout(seq[n:n+1], wait)
-		if errors.Is(err, termio.ErrTimeout) || read == 0 {
-			break
-		}
-		if err != nil {
-			return selectKeyIgnore, err
-		}
-		n++
-		wait = 5 * time.Millisecond
-
-		// Stop as soon as a complete CSI (ESC [ ... <final>) or SS3 (ESC O <ch>) arrives.
-		if n >= 2 && (seq[0] == 'O' || (seq[0] == '[' && seq[n-1] >= 0x40 && seq[n-1] <= 0x7e) || (seq[0] != '[' && seq[0] != 'O')) {
-			break
-		}
+func readSelectEscapeKey(reader *termio.Reader) (selectKey, error) {
+	seq, err := readEscapeTail(reader)
+	if err != nil {
+		return selectKeyIgnore, err
 	}
-
-	switch string(seq[:n]) {
+	if isCtrlCEscapeTail(seq) {
+		return selectKeyInterrupt, nil
+	}
+	switch seq {
 	case "[A", "OA", "[D", "OD":
 		return selectKeyPrev, nil
 	case "[B", "OB", "[C", "OC":

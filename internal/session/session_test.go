@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -337,5 +338,40 @@ func TestServiceDerivesTitle(t *testing.T) {
 	want := "帮我排查nginx502错误先看upstream和后端服务状态"
 	if got := manager.Current().Title; got != want {
 		t.Fatalf("title = %q, want %q", got, want)
+	}
+}
+
+func TestCompactIfNeededPropagatesCancellation(t *testing.T) {
+	interruptErr := errors.New("interrupted by user")
+	compactor := &fakeCompactor{
+		err: errors.Join(interruptErr, context.Canceled),
+	}
+	var callbackErr error
+	manager := NewManager(ManagerOptions{
+		Repository:  NewInMemoryRepository(),
+		Compactor:   compactor,
+		Clock:       fixedClock{now: time.Date(2026, 10, 31, 10, 0, 0, 0, time.UTC)},
+		IDGenerator: &seqIDs{},
+		Settings: Settings{
+			ContextWindowLimit:     100,
+			RetainTailTokens:       1,
+			CompactionTriggerRatio: 0.5,
+			CompactionEnabled:      true,
+		},
+		OnCompactionError: func(err error) { callbackErr = err },
+	})
+	ctx := context.Background()
+	_, _ = manager.Create(ctx)
+	_, _ = manager.AppendUser(ctx, strings.Repeat("old question ", 200))
+	_, _ = manager.AppendAssistant(ctx, strings.Repeat("old answer ", 200), nil, &Usage{TotalTokens: 5000}, "p/m")
+	_ = manager.RecordResponseUsage(ctx, &Usage{TotalTokens: 5000})
+	_, _ = manager.AppendUser(ctx, "latest question")
+
+	err := manager.CompactIfNeeded(ctx)
+	if !errors.Is(err, interruptErr) || !errors.Is(err, context.Canceled) {
+		t.Fatalf("CompactIfNeeded err = %v, want joined interrupt + context.Canceled", err)
+	}
+	if callbackErr != nil {
+		t.Fatalf("OnCompactionError must not fire on cancellation, got %v", callbackErr)
 	}
 }

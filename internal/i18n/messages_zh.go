@@ -16,7 +16,7 @@ var ChineseMessages = map[string]string{
 	"interactive.followup_limit_hint":   "已达到连续自动工具调用上限（%d 轮），已暂停自动执行；输入“继续”可接着处理，或补充更多说明。",
 	"interactive.think_content":         "思考内容:",
 	"interactive.esc_interrupt":         "✗ 已取消，可继续输入",
-	"interactive.esc_hint":              "ESC 取消",
+	"interactive.thinking_key_hint":     "Esc 取消请求 · Ctrl+C 退出",
 	"interactive.file_change":           "文件修改",
 	"interactive.file_change_reason":    "原因",
 	"interactive.file_change_target":    "目标",

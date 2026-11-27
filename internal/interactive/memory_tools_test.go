@@ -33,12 +33,15 @@ func (m *scriptedModel) next() *llm.CompletionResponse {
 
 type turnRecorder struct {
 	noopRenderer
-	turnCompletions int
-	assistantTexts  []string
-	notices         []string
+	turnCompletions    int
+	interruptedNotices int
+	assistantTexts     []string
+	notices            []string
 }
 
 func (r *turnRecorder) RenderTurnComplete() { r.turnCompletions++ }
+
+func (r *turnRecorder) RenderInterruptedNotice() { r.interruptedNotices++ }
 
 func (r *turnRecorder) RenderNotice(_ NoticeLevel, message string) {
 	r.notices = append(r.notices, message)

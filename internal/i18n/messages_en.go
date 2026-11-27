@@ -16,7 +16,7 @@ var EnglishMessages = map[string]string{
 	"interactive.followup_limit_hint":   `Reached the consecutive unattended tool call limit (%d rounds) and paused; enter "continue" to proceed or add more details.`,
 	"interactive.think_content":         "Thinking Content:",
 	"interactive.esc_interrupt":         "✗ Canceled. Continue typing.",
-	"interactive.esc_hint":              "esc to cancel",
+	"interactive.thinking_key_hint":     "Esc to cancel · Ctrl+C to exit",
 	"interactive.file_change":           "File edit",
 	"interactive.file_change_reason":    "Reason",
 	"interactive.file_change_target":    "Target",

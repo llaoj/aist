@@ -10,7 +10,7 @@ import (
 // Hooks receives notifications around model calls.
 type Hooks interface {
 	BeforeCall(cancel context.CancelFunc)
-	AfterCall()
+	AfterCall() error
 }
 
 const (
@@ -91,7 +91,10 @@ func (m *ServerModel) Call(ctx context.Context, req CompletionRequest) (resp *Co
 	}
 	defer func() {
 		if m.hooks != nil {
-			m.hooks.AfterCall()
+			if hookErr := m.hooks.AfterCall(); hookErr != nil {
+				resp = nil
+				err = hookErr
+			}
 		}
 	}()
 

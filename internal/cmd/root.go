@@ -202,7 +202,7 @@ func runPipeMode(cmd *cobra.Command, initialQuestion string) {
 	session.SetPipeReader(bytes.NewReader(pipeData))
 
 	err = session.RunPipeAnalysis(initialQuestion)
-	if err != nil {
+	if err != nil && !errors.Is(err, interactive.ErrInterrupted) {
 		color.Red(translator.T("error.general", interactive.RenderErrorMessage(translator, err)))
 	}
 }

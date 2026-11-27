@@ -157,6 +157,9 @@ func (s *Session) Run(initialQuestion string) error {
 			return err
 		}
 		if err := s.runTurn(ctx); err != nil {
+			if errors.Is(err, ErrInterrupted) {
+				return nil
+			}
 			return err
 		}
 		return s.runLoop()
@@ -165,6 +168,9 @@ func (s *Session) Run(initialQuestion string) error {
 	if initialQuestion != "" {
 		s.renderer.RenderUserMessage(initialQuestion)
 		if err := s.handleUserTurn(initialQuestion); err != nil {
+			if errors.Is(err, ErrInterrupted) {
+				return nil
+			}
 			return err
 		}
 	}
@@ -346,7 +352,7 @@ func (s *Session) runTurn(ctx context.Context) error {
 
 func (s *Session) runModelStep(ctx context.Context, isFinalFollowUp bool) (*llm.CompletionResponse, error) {
 	if err := s.sessionManager.CompactIfNeeded(ctx); err != nil {
-		return nil, err
+		return nil, s.handleModelCallError(err)
 	}
 
 	toolChoice := llm.ToolChoiceAuto
@@ -363,11 +369,7 @@ func (s *Session) runModelStep(ctx context.Context, isFinalFollowUp bool) (*llm.
 		TopP:        llm.Float64Ptr(0.2),
 	})
 	if err != nil {
-		if errors.Is(err, context.Canceled) {
-			s.renderer.RenderInterruptedNotice()
-			return nil, nil
-		}
-		return nil, err
+		return nil, s.handleModelCallError(err)
 	}
 
 	usage := usageFromLLM(resp.Usage)
@@ -380,6 +382,17 @@ func (s *Session) runModelStep(ctx context.Context, isFinalFollowUp bool) (*llm.
 	_ = s.sessionManager.EnsureTitle(ctx)
 	s.renderer.RenderAssistantMessage(resp.Content)
 	return resp, nil
+}
+
+func (s *Session) handleModelCallError(err error) error {
+	if errors.Is(err, ErrInterrupted) {
+		return ErrInterrupted
+	}
+	if errors.Is(err, context.Canceled) {
+		s.renderer.RenderInterruptedNotice()
+		return nil
+	}
+	return err
 }
 
 func (s *Session) buildRequestMessages(isFinalFollowUp bool) []llm.ChatMessage {

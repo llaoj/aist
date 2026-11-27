@@ -179,3 +179,39 @@ func TestServerModelCapsTotalDurationWithTimeout(t *testing.T) {
 		t.Fatalf("elapsed = %v, exceeded overall timeout cap", elapsed)
 	}
 }
+
+type interruptingHooks struct {
+	afterErr error
+}
+
+func (h interruptingHooks) BeforeCall(cancel context.CancelFunc) {
+	cancel()
+}
+
+func (h interruptingHooks) AfterCall() error {
+	return h.afterErr
+}
+
+func TestServerModelPropagatesAfterCallInterruptError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-r.Context().Done()
+	}))
+	defer srv.Close()
+
+	wantErr := errors.New("session interrupted")
+	model, err := NewServerModel(ServerModelOptions{
+		BaseURL: srv.URL,
+		Hooks:   interruptingHooks{afterErr: wantErr},
+	})
+	if err != nil {
+		t.Fatalf("NewServerModel: %v", err)
+	}
+
+	resp, err := model.Call(context.Background(), CompletionRequest{})
+	if resp != nil {
+		t.Fatalf("resp = %+v, want nil", resp)
+	}
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("err = %v, want %v", err, wantErr)
+	}
+}

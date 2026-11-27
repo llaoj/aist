@@ -78,6 +78,11 @@ func (s llmCompactor) Compact(ctx context.Context, req session.CompactionRequest
 		TopP:        llm.Float64Ptr(0.1),
 	})
 	if err != nil {
+		if errors.Is(err, interactive.ErrInterrupted) {
+			// Join context.Canceled so session.Manager.CompactIfNeeded propagates
+			// user interrupts without depending on the interactive package.
+			return session.CompactionResult{}, errors.Join(err, context.Canceled)
+		}
 		return session.CompactionResult{}, err
 	}
 	return session.CompactionResult{

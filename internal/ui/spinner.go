@@ -2,115 +2,176 @@ package ui
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/llaoj/aist/internal/termio"
 	"golang.org/x/term"
 )
 
-// StartSpinner starts a terminal spinner with ESC interrupt support.
-// If cancel is non-nil, pressing ESC will call cancel to abort the in-flight operation.
-// Returns a stop function that blocks until spinner fully stops.
-func StartSpinner(message, escHint string, cancel context.CancelFunc) func() {
-	stat, err := os.Stdout.Stat()
-	if err != nil || (stat.Mode()&os.ModeCharDevice) == 0 {
-		return func() {}
+type spinnerKey int
+
+const (
+	spinnerKeyIgnore spinnerKey = iota
+	spinnerKeyCancel
+	spinnerKeyInterrupt
+)
+
+// StartSpinner starts a terminal spinner with a footer key hint.
+// Pressing Esc cancels the in-flight operation; pressing Ctrl+C cancels the
+// operation and causes stop() to return ErrInterrupted.
+func StartSpinner(message, keyHint string, cancel context.CancelFunc) func() error {
+	return startSpinnerTTY(os.Stdin, os.Stdout, message, keyHint, cancel)
+}
+
+func startSpinnerTTY(in, out *os.File, message, keyHint string, cancel context.CancelFunc) func() error {
+	if out == nil || !term.IsTerminal(int(out.Fd())) {
+		return func() error { return nil }
 	}
 
-	fd := int(os.Stdin.Fd())
-	supportESCInterrupt := cancel != nil && term.IsTerminal(fd)
-
-	hint := ""
-	if supportESCInterrupt {
-		hint = escHint
+	var (
+		inFd             int
+		oldState         *term.State
+		interactiveInput bool
+	)
+	if in != nil && cancel != nil && term.IsTerminal(int(in.Fd())) {
+		inFd = int(in.Fd())
+		if state, err := term.MakeRaw(inFd); err == nil && state != nil {
+			oldState = state
+			interactiveInput = true
+		}
 	}
+
+	styledHint := ""
+	if interactiveInput && keyHint != "" {
+		styledHint = keyHintStyle.Sprint(keyHint)
+	}
+
+	_ = termio.WriteAll(out, []byte("\033[?25l"))
 
 	done := make(chan struct{})
-	var wg sync.WaitGroup
-	wg.Add(1)
+	var (
+		wg          sync.WaitGroup
+		stopOnce    sync.Once
+		interrupted atomic.Bool
+	)
 
+	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		// Hide cursor while spinner is active
-		fmt.Print("\033[?25l")
-
-		frameTicker := time.NewTicker(120 * time.Millisecond)
-		defer frameTicker.Stop()
-
-		secTicker := time.NewTicker(1 * time.Second)
-		defer secTicker.Stop()
-
-		frames := []string{"-", "\\", "|", "/"}
-		frameIdx := 0
-		elapsed := 0
-
-		for {
-			select {
-			case <-done:
-				// Show cursor again before exiting
-				fmt.Printf("\r\033[K\033[?25h")
-				return
-			case <-frameTicker.C:
-				frameIdx = (frameIdx + 1) % len(frames)
-				fmt.Printf("\r\033[K%s %s(%ds) %s\n\033[A", frames[frameIdx], message, elapsed, hint)
-			case <-secTicker.C:
-				elapsed++
-				fmt.Printf("\r\033[K%s %s(%ds) %s\n\033[A", frames[frameIdx], message, elapsed, hint)
-			}
-		}
+		runSpinnerDisplay(out, message, styledHint, done)
 	}()
 
-	// Start ESC listener within spinner lifecycle if cancel provided
-	if supportESCInterrupt {
+	if interactiveInput {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-
-			// Switch stdin to raw mode so keypresses are delivered immediately
-			// without waiting for Enter (line-buffered cooked mode would swallow ESC).
-			oldState, err := term.MakeRaw(fd)
-			if err != nil || oldState == nil {
-				return
-			}
-			defer term.Restore(fd, oldState)
-			defer termio.DrainInput(fd)
-
-			reader, err := termio.NewReader(fd, done)
-			if err != nil {
-				return
-			}
-			defer reader.Close()
-
-			buf := make([]byte, 1)
-			seqBuf := make([]byte, 1)
-			for {
-				n, err := reader.Read(buf)
-				if err != nil {
-					return
-				}
-
-				if n > 0 && buf[0] == 0x1b {
-					// If another byte arrives immediately, it is an escape
-					// sequence (e.g. arrow keys \x1b[A), not a standalone ESC.
-					_, seqErr := reader.ReadTimeout(seqBuf, 15*time.Millisecond)
-					if errors.Is(seqErr, termio.ErrTimeout) {
-						cancel()
-						return
-					}
-					if seqErr != nil {
-						return
-					}
-				}
-			}
+			runSpinnerInput(inFd, done, cancel, &interrupted)
 		}()
 	}
 
-	return func() {
-		close(done)
-		wg.Wait()
+	return func() error {
+		stopOnce.Do(func() {
+			close(done)
+			wg.Wait()
+			if oldState != nil {
+				termio.DrainInput(inFd)
+				_ = term.Restore(inFd, oldState)
+			}
+		})
+		if interrupted.Load() {
+			return ErrInterrupted
+		}
+		return nil
+	}
+}
+
+func runSpinnerDisplay(out *os.File, message, styledHint string, done <-chan struct{}) {
+	frameTicker := time.NewTicker(120 * time.Millisecond)
+	defer frameTicker.Stop()
+
+	secTicker := time.NewTicker(1 * time.Second)
+	defer secTicker.Stop()
+
+	frames := []string{"-", "\\", "|", "/"}
+	frameIdx := 0
+	elapsed := 0
+	prevRows := renderSpinner(out, frames[frameIdx], message, elapsed, styledHint, 0)
+
+	for {
+		select {
+		case <-done:
+			clearTerminalBlock(out, prevRows, true)
+			return
+		case <-frameTicker.C:
+			frameIdx = (frameIdx + 1) % len(frames)
+			prevRows = renderSpinner(out, frames[frameIdx], message, elapsed, styledHint, prevRows)
+		case <-secTicker.C:
+			elapsed++
+			prevRows = renderSpinner(out, frames[frameIdx], message, elapsed, styledHint, prevRows)
+		}
+	}
+}
+
+func runSpinnerInput(inFd int, done <-chan struct{}, cancel context.CancelFunc, interrupted *atomic.Bool) {
+	reader, err := termio.NewReader(inFd, done)
+	if err != nil {
+		return
+	}
+	defer reader.Close()
+
+	for {
+		key, err := readSpinnerKey(reader)
+		if err != nil {
+			return
+		}
+		switch key {
+		case spinnerKeyCancel:
+			cancel()
+		case spinnerKeyInterrupt:
+			interrupted.Store(true)
+			cancel()
+			return
+		}
+	}
+}
+
+func renderSpinner(out *os.File, frame, message string, elapsed int, styledHint string, prevRows int) int {
+	statusLine := fmt.Sprintf("%s %s(%ds)", frame, message, elapsed)
+	if styledHint == "" {
+		return renderTerminalBlock(out, []string{statusLine}, false, prevRows)
+	}
+	return renderTerminalBlock(out, []string{statusLine, styledHint}, false, prevRows)
+}
+
+func readSpinnerKey(reader *termio.Reader) (spinnerKey, error) {
+	var b [1]byte
+	n, err := reader.Read(b[:])
+	if err != nil || n == 0 {
+		return spinnerKeyIgnore, err
+	}
+
+	switch b[0] {
+	case keyCtrlC:
+		return spinnerKeyInterrupt, nil
+	case keyEsc:
+		seq, err := readEscapeTail(reader)
+		if err != nil {
+			return spinnerKeyIgnore, err
+		}
+		if isCtrlCEscapeTail(seq) {
+			return spinnerKeyInterrupt, nil
+		}
+		switch seq {
+		case "", "[27u", "[27;1;27~":
+			return spinnerKeyCancel, nil
+		default:
+			return spinnerKeyIgnore, nil
+		}
+	default:
+		return spinnerKeyIgnore, nil
 	}
 }
