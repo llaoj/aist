@@ -63,7 +63,7 @@ func TestInitialCollectionsSnapshot(t *testing.T) {
 	}
 	assertSuperuserOnly(t, providers)
 	assertFields(t, providers,
-		[]string{"name", "base_url", "api_key", "enabled"},
+		[]string{"name", "base_url", "api_key", "protocol", "enabled"},
 		[]string{"api_key_enc"},
 	)
 

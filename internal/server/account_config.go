@@ -58,6 +58,7 @@ type modelCandidate struct {
 	ModelID           string
 	ProviderID        string
 	Provider          string
+	Protocol          upstreamProtocol
 	Model             string
 	Priority          int
 	ContextWindow     int
@@ -188,6 +189,7 @@ func loadUserCandidates(app core.App, record *core.Record) ([]modelCandidate, er
 			ModelID:           model.Id,
 			ProviderID:        provider.Id,
 			Provider:          provider.GetString("name"),
+			Protocol:          parseUpstreamProtocol(provider.GetString("protocol")),
 			Model:             model.GetString("name"),
 			Priority:          model.GetInt("priority"),
 			ContextWindow:     model.GetInt("context_window"),

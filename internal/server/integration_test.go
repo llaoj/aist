@@ -685,3 +685,84 @@ func TestProxyBadRequestDoesNotFallback(t *testing.T) {
 		t.Fatalf("expected extracted upstream error message, got: %s", w.Body.String())
 	}
 }
+
+func TestProxyGeminiProtocolAdapterEndToEndAndFailover(t *testing.T) {
+	failGemini := false
+	var gotGeminiPath, gotGeminiKey string
+
+	geminiUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotGeminiPath = r.URL.Path
+		gotGeminiKey = r.Header.Get("x-goog-api-key")
+		w.Header().Set("Content-Type", "application/json")
+		if failGemini {
+			_, _ = w.Write([]byte(`{"candidates":[{"finishReason":"MALFORMED_FUNCTION_CALL"}]}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{
+			"modelVersion": "gemini-3.5-flash-lite",
+			"candidates": [{
+				"content": {"role": "model", "parts": [{"text": "hello from native gemini"}]},
+				"finishReason": "STOP"
+			}],
+			"usageMetadata": {
+				"promptTokenCount": 12,
+				"candidatesTokenCount": 5,
+				"thoughtsTokenCount": 3,
+				"totalTokenCount": 20
+			}
+		}`))
+	}))
+	defer geminiUpstream.Close()
+
+	openAIFallback := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"model": "deepseek-flash",
+			"choices": [{"index": 0, "message": {"role": "assistant", "content": "hello from fallback"}, "finish_reason": "stop"}],
+			"usage": {"prompt_tokens": 10, "completion_tokens": 4, "total_tokens": 14}
+		}`))
+	}))
+	defer openAIFallback.Close()
+
+	app, srv := setupServer(t)
+
+	geminiProv := createProvider(t, app, "google", geminiUpstream.URL+"/v1beta", "goog-key-123", true)
+	geminiProv.Set("protocol", "gemini")
+	if err := app.Save(geminiProv); err != nil {
+		t.Fatalf("save gemini provider protocol: %v", err)
+	}
+	fallbackProv := createProvider(t, app, "deepseek", openAIFallback.URL, "sk-ds", true)
+
+	geminiModel := createModel(t, app, geminiProv, "gemini-3.5-flash-lite", 10, 0, 4096, true)
+	fallbackModel := createModel(t, app, fallbackProv, "deepseek-flash", 20, 0, 4096, true)
+
+	user := createUser(t, app, "gemuser", "gempw12345")
+	configureUser(t, app, user, nil, geminiModel, fallbackModel)
+
+	h := buildMux(t, app, srv)
+	login := loginWithPassword(t, h, "gemuser@example.com", "gempw12345")
+
+	// 1. Direct success through native Gemini adapter.
+	w1 := doJSON(t, h, http.MethodPost, "/v1/proxy/chat/completions", "Bearer "+login.Token,
+		`{"model":"auto","messages":[{"role":"user","content":"hi"}]}`)
+	if w1.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", w1.Code, w1.Body.String())
+	}
+	if gotGeminiPath != "/v1beta/models/gemini-3.5-flash-lite:generateContent" {
+		t.Fatalf("gemini path = %q", gotGeminiPath)
+	}
+	if gotGeminiKey != "goog-key-123" {
+		t.Fatalf("x-goog-api-key = %q", gotGeminiKey)
+	}
+	if !strings.Contains(w1.Body.String(), "hello from native gemini") || !strings.Contains(w1.Body.String(), `"completion_tokens":8`) {
+		t.Fatalf("unexpected response body: %s", w1.Body.String())
+	}
+
+	// 2. Malformed Gemini response triggers seamless failover to OpenAI fallback.
+	failGemini = true
+	w2 := doJSON(t, h, http.MethodPost, "/v1/proxy/chat/completions", "Bearer "+login.Token,
+		`{"model":"auto","messages":[{"role":"user","content":"hi again"}]}`)
+	if w2.Code != http.StatusOK || !strings.Contains(w2.Body.String(), "hello from fallback") {
+		t.Fatalf("failover status = %d body=%s", w2.Code, w2.Body.String())
+	}
+}
