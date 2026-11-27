@@ -3,7 +3,7 @@ layout: home
 
 hero:
   name: AIST
-  text: On-Call AI Shell Assistant
+  text: On-Call AI Shell assistanT
   tagline: Natural-language server diagnostics, human-confirmed execution, multi-host SSH, and centralized team governance — self-hosted with zero client config.
   image:
     light: /logo.svg

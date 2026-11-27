@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"strings"
@@ -19,13 +20,18 @@ import (
 	"golang.org/x/term"
 )
 
+var continueSession bool
+
 var rootCmd = &cobra.Command{
 	Use:   "aist [question]",
-	Short: "AI Shell Assistant",
-	Long: `AI Shell Assistant (aist)
+	Short: "AI Shell assistanT",
+	Long: `AI Shell assistanT (AIST)
 
 Examples:
-  aist "your question"     # Ask question and exit
+  aist                     # Start an interactive session
+  aist -c                  # Continue the most recent session
+  aist -c "follow-up"      # Continue the most recent session with a question
+  aist "your question"     # Start with an initial question
   cmd | aist "question"    # Analyze piped data with context
   aist lang zh             # Switch display and reply language (zh or en)`,
 	FParseErrWhitelist: cobra.FParseErrWhitelist{
@@ -134,6 +140,10 @@ func Execute() error {
 	return rootCmd.Execute()
 }
 
+func init() {
+	rootCmd.Flags().BoolVarP(&continueSession, "continue", "c", false, "Continue the most recent session")
+}
+
 func runInteractiveMode(cmd *cobra.Command, initialQuestion string) {
 	runInteractiveSession(cmd, initialQuestion, nil)
 }
@@ -145,23 +155,59 @@ func runInteractiveSession(cmd *cobra.Command, initialQuestion string, pipeReade
 	}
 	translator := application.Translator()
 
-	session, err := application.NewSession(interactive.ModeInteractive)
+	chatSession, resumed, err := openSession(cmd.Context(), application, interactive.ModeInteractive, continueSession, true)
 	if err != nil {
 		color.Red("%s\n", err)
 		return
 	}
 	if pipeReader != nil {
-		session.SetPipeReader(pipeReader)
+		chatSession.SetPipeReader(pipeReader)
 	}
 
-	err = session.Run(initialQuestion)
+	if resumed {
+		err = chatSession.Resume(initialQuestion)
+	} else {
+		err = chatSession.Run(initialQuestion)
+	}
 	if err != nil {
 		color.Red(translator.T("error.general", interactive.RenderErrorMessage(translator, err)))
 	} else {
-		// Run returns nil only on ctrl+c (the interactive loop is otherwise infinite).
+		// Run/Resume returns nil only on ctrl+c (the interactive loop is otherwise infinite).
 		// BubbleTea already restored the terminal and left a blank line, so print goodbye directly.
 		printGoodbye(translator)
 	}
+}
+
+func openSession(ctx context.Context, application *app.App, mode interactive.Mode, resumeLatest, printNotice bool) (*interactive.Session, bool, error) {
+	if !resumeLatest {
+		chatSession, err := application.NewSession(mode)
+		return chatSession, false, err
+	}
+
+	translator := application.Translator()
+	summaries, err := application.ListSessions(ctx)
+	if err != nil {
+		return nil, false, fmt.Errorf(translator.T("sessions.list_failed"), err)
+	}
+	if len(summaries) == 0 {
+		if printNotice {
+			fmt.Println(translator.T("sessions.continue_empty"))
+			fmt.Println()
+		}
+		chatSession, err := application.NewSession(mode)
+		return chatSession, false, err
+	}
+
+	latest := summaries[0]
+	chatSession, err := application.NewSessionWithID(latest.ID, mode)
+	if err != nil {
+		return nil, false, err
+	}
+	if printNotice {
+		fmt.Println(translator.T("sessions.restored", sessionDisplayTitle(latest.Title), latest.MessageCount))
+		fmt.Println()
+	}
+	return chatSession, true, nil
 }
 
 func printGoodbye(translator *i18n.I18n) {
@@ -194,14 +240,14 @@ func runPipeMode(cmd *cobra.Command, initialQuestion string) {
 		return
 	}
 
-	session, err := application.NewSession(interactive.ModePipe)
+	chatSession, _, err := openSession(cmd.Context(), application, interactive.ModePipe, continueSession, false)
 	if err != nil {
 		color.Red("%s\n", err)
 		return
 	}
-	session.SetPipeReader(bytes.NewReader(pipeData))
+	chatSession.SetPipeReader(bytes.NewReader(pipeData))
 
-	err = session.RunPipeAnalysis(initialQuestion)
+	err = chatSession.RunPipeAnalysis(initialQuestion)
 	if err != nil && !errors.Is(err, interactive.ErrInterrupted) {
 		color.Red(translator.T("error.general", interactive.RenderErrorMessage(translator, err)))
 	}

@@ -404,8 +404,8 @@ func TestInteractivePipedSessionRunsWithToolsAndDynamicSystemPrompt(t *testing.T
 		t.Fatalf("Run interactive pipe: %v", err)
 	}
 
-	if got := manager.Current().Title; got != "分析nginx502超时" {
-		t.Fatalf("title = %q, want 分析nginx502超时 (must not include <piped_input>)", got)
+	if got := manager.Current().Title; got != "分析 nginx 502 超时" {
+		t.Fatalf("title = %q, want 分析 nginx 502 超时 (must not include <piped_input>)", got)
 	}
 	if len(liveRecorder.users) != 1 || liveRecorder.users[0] != "分析 nginx 502 超时" {
 		t.Fatalf("rendered user messages = %+v, want question only without raw <piped_input>", liveRecorder.users)
@@ -531,8 +531,8 @@ func TestInteractivePipeWithoutInitialQuestionWaitsForPromptInput(t *testing.T) 
 	if len(model.requests) != 2 {
 		t.Fatalf("model calls = %d, want 2", len(model.requests))
 	}
-	if got := activeManager.Current().Title; got != "帮我加个8080反向代理" {
-		t.Fatalf("title = %q, want 帮我加个8080反向代理", got)
+	if got := activeManager.Current().Title; got != "帮我加个 8080 反向代理" {
+		t.Fatalf("title = %q, want 帮我加个 8080 反向代理", got)
 	}
 	firstUser := llm.DerefPtr(model.requests[0].Messages[1].Content)
 	if !strings.HasPrefix(firstUser, "帮我加个 8080 反向代理\n\n<piped_input>\nserver {") {
@@ -580,8 +580,8 @@ func TestHeadlessPipeRequiresQuestionAndRunsWithoutTools(t *testing.T) {
 	if err := pipeSession.RunPipeAnalysis("总结 OOM 原因"); err != nil {
 		t.Fatalf("RunPipeAnalysis with question: %v", err)
 	}
-	if got := manager.Current().Title; got != "总结OOM原因" {
-		t.Fatalf("title = %q, want 总结OOM原因", got)
+	if got := manager.Current().Title; got != "总结 OOM 原因" {
+		t.Fatalf("title = %q, want 总结 OOM 原因", got)
 	}
 	if len(model.requests[0].Tools) != 0 {
 		t.Fatalf("headless pipe request must omit tools, got %+v", model.requests[0].Tools)
@@ -682,4 +682,50 @@ func TestSessionCtrlCDuringThinkingExitsCleanly(t *testing.T) {
 			t.Fatalf("interruptedNotices=%d notices=%+v, want 0 and empty", recorder.interruptedNotices, recorder.notices)
 		}
 	})
+}
+
+func TestSessionResumeWithFollowUpAndPipePreservesTitle(t *testing.T) {
+	manager := sessionpkg.NewManager(sessionpkg.ManagerOptions{
+		Settings: sessionpkg.Settings{CompactionEnabled: false},
+	})
+	ctx := context.Background()
+	_, _ = manager.Create(ctx)
+	_, _ = manager.AppendUser(ctx, "之前的 nginx 502 问题")
+	_, _ = manager.AppendAssistant(ctx, "先看 upstream 状态。", nil, nil, "p/m")
+	_ = manager.EnsureTitle(ctx)
+	originalTitle := manager.Current().Title
+
+	model := &recordingScriptedModel{
+		responses: []*llm.CompletionResponse{
+			{Content: "已结合历史和新日志定位到超时。", Model: "p/m"},
+		},
+	}
+	recorder := &historyRecorder{}
+	sess := NewSession(SessionOptions{
+		LLM:            model,
+		SessionManager: manager,
+		Translator:     i18n.New("zh"),
+		Mode:           ModeInteractive,
+		PromptSet:      staticPrompts{},
+		PipeReader:     strings.NewReader("upstream timed out"),
+		InputReader:    interruptInput{},
+		Renderer:       recorder,
+	})
+
+	if err := sess.Resume("结合这段新日志再看看"); err != nil {
+		t.Fatalf("Resume: %v", err)
+	}
+	if len(model.requests) != 1 {
+		t.Fatalf("model calls = %d, want 1", len(model.requests))
+	}
+	if len(recorder.users) != 2 || recorder.users[0] != "之前的 nginx 502 问题" || recorder.users[1] != "结合这段新日志再看看" {
+		t.Fatalf("rendered users = %+v, want replayed + follow-up", recorder.users)
+	}
+	if got := manager.Current().Title; got != originalTitle {
+		t.Fatalf("title = %q, want preserved %q", got, originalTitle)
+	}
+	reqMsgs := model.requests[0].Messages
+	if len(reqMsgs) < 4 {
+		t.Fatalf("request messages len = %d, want system + prior turn + new follow-up", len(reqMsgs))
+	}
 }

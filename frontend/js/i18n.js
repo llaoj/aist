@@ -7,7 +7,7 @@
     zh: {
       "meta.title": "AIST - 首个 ON-CALL 运维智能体",
       "meta.description":
-        "AIST（AI Shell Assistant）是常驻服务器与终端控制台的 On-Call 运维智能体：自然语言诊断、确认后执行、连续分析，支持私有化部署，数据不出内网。",
+        "AIST（AI Shell assistanT）是常驻服务器与终端控制台的 On-Call 运维智能体：自然语言诊断、确认后执行、连续分析，支持私有化部署，数据不出内网。",
       "nav.aria": "主导航",
       "nav.features": "特性",
       "nav.usage": "使用方式",
@@ -249,7 +249,7 @@
     en: {
       "meta.title": "AIST - The First On-Call Ops Agent",
       "meta.description":
-        "AIST (AI Shell Assistant) is an On-Call operations agent that lives on your servers and in your terminal console: natural-language diagnosis, confirmed execution, continuous analysis, and private deployment that keeps data inside your network.",
+        "AIST (AI Shell assistanT) is an On-Call operations agent that lives on your servers and in your terminal console: natural-language diagnosis, confirmed execution, continuous analysis, and private deployment that keeps data inside your network.",
       "nav.aria": "Main navigation",
       "nav.features": "Features",
       "nav.usage": "Usage",

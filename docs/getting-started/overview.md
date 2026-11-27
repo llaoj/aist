@@ -1,6 +1,6 @@
 # Overview & Core Architecture
 
-**AIST (AI Shell Assistant)** is an on-call command-line operations agent built for SREs, DevOps engineers, and backend developers. Describe an incident or task in plain language — AIST inspects live system state, proposes commands or file edits, waits for your confirmation, runs them in a real terminal PTY (locally or over SSH), and feeds the output back into the loop until the issue is resolved.
+**AIST (AI Shell assistanT)** is an on-call command-line operations agent built for SREs, DevOps engineers, and backend developers. Describe an incident or task in plain language — AIST inspects live system state, proposes commands or file edits, waits for your confirmation, runs them in a real terminal PTY (locally or over SSH), and feeds the output back into the loop until the issue is resolved.
 
 ![AIST troubleshooting workflow](/demo.gif)
 

@@ -129,10 +129,24 @@ func (s *Session) SetPipeReader(reader io.Reader) {
 	s.pipeReader = reader
 }
 
-// Run starts the interactive session, processing optional piped input or an
+// Run starts a new interactive session, processing optional piped input or an
 // initial question before entering the interactive input loop.
 func (s *Session) Run(initialQuestion string) error {
+	return s.start(initialQuestion, false)
+}
+
+// Resume restores an existing session, replays its local display history,
+// processes optional piped input or an initial question, then enters the
+// interactive loop. It never calls the model for old messages.
+func (s *Session) Resume(initialQuestion string) error {
+	return s.start(initialQuestion, true)
+}
+
+func (s *Session) start(initialQuestion string, replayHistory bool) error {
 	s.renderWelcome()
+	if replayHistory {
+		s.ReplayHistory()
+	}
 	if s.pipeReader != nil {
 		rawPipe, err := s.drainPipeReader()
 		if err != nil {
@@ -147,7 +161,7 @@ func (s *Session) Run(initialQuestion string) error {
 		}
 
 		ctx := context.Background()
-		if err := s.sessionManager.SetDerivedTitle(ctx, trimmedQuestion); err != nil {
+		if err := s.deriveTitleIfEmpty(ctx, trimmedQuestion); err != nil {
 			return err
 		}
 		userMessage := buildPipedUserMessage(trimmedQuestion, rawPipe)
@@ -178,12 +192,11 @@ func (s *Session) Run(initialQuestion string) error {
 	return s.runLoop()
 }
 
-// Resume starts an existing session, replays its local display history,
-// then enters the interactive loop. It never calls the model for old messages.
-func (s *Session) Resume() error {
-	s.renderWelcome()
-	s.ReplayHistory()
-	return s.runLoop()
+func (s *Session) deriveTitleIfEmpty(ctx context.Context, text string) error {
+	if cur := s.sessionManager.Current(); cur != nil && strings.TrimSpace(cur.Title) != "" {
+		return nil
+	}
+	return s.sessionManager.SetDerivedTitle(ctx, text)
 }
 
 func (s *Session) renderWelcome() {
@@ -203,7 +216,7 @@ func (s *Session) RunPipeAnalysis(initialQuestion string) error {
 	}
 
 	ctx := context.Background()
-	if err := s.sessionManager.SetDerivedTitle(ctx, trimmedQuestion); err != nil {
+	if err := s.deriveTitleIfEmpty(ctx, trimmedQuestion); err != nil {
 		return err
 	}
 	userMessage := buildPipedUserMessage(trimmedQuestion, rawPipe)
@@ -297,7 +310,7 @@ func (s *Session) handleUserTurn(userInput string) error {
 	if s.pendingPipeInput != "" {
 		rawPipe := s.pendingPipeInput
 		s.pendingPipeInput = ""
-		if err := s.sessionManager.SetDerivedTitle(ctx, userInput); err != nil {
+		if err := s.deriveTitleIfEmpty(ctx, userInput); err != nil {
 			return err
 		}
 		if _, err := s.sessionManager.AppendUser(ctx, buildPipedUserMessage(userInput, rawPipe)); err != nil {

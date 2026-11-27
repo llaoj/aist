@@ -1,7 +1,7 @@
 <div align="center">
   <img src="frontend/logo.svg" alt="AIST Logo" width="88"/>
 
-  # AIST — AI Shell Assistant
+  # AIST — AI Shell assistanT
 
   **On-call operations agent in your terminal — diagnose in natural language, confirm before executing, and govern keys, model routing & audit logs from one server.**
 

@@ -5,6 +5,7 @@
 | Command | Requires Login? | Description |
 |---|---|---|
 | `aist` | Yes | Start interactive troubleshooting session |
+| `aist -c` / `aist --continue ["<question>"]` | Yes | Resume the most recent session immediately (starts a new session if none exists; supports follow-up questions and piped input) |
 | `aist "<question>"` | Yes | Start interactive session with an initial question |
 | `<cmd> \| aist ["<question>"]` | Yes | Ingest piped stdin and continue interactively via `/dev/tty` (falls back to one-shot read-only output when stdout is redirected or headless) |
 | `aist sessions` | Yes | List recent local sessions and resume the selected conversation |

@@ -1,7 +1,7 @@
 <div align="center">
   <img src="frontend/logo.svg" alt="AIST Logo" width="88"/>
 
-  # AIST — AI Shell Assistant
+  # AIST — AI Shell assistanT
 
   **常驻终端的 On-Call 运维智能体 —— 自然语言诊断、确认后执行，由服务端统一托管密钥、模型路由与操作审计。**
 

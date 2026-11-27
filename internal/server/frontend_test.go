@@ -18,7 +18,7 @@ func TestFrontendRoutes(t *testing.T) {
 		contentType string
 		body        string
 	}{
-		{"/", http.StatusOK, "text/html", "AI Shell Assistant"},
+		{"/", http.StatusOK, "text/html", "AI Shell assistanT"},
 		{"/logo.svg", http.StatusOK, "", "<svg"},
 		{"/run.sh", http.StatusOK, "text/plain", "AIST_RELEASE_BASE_URL"},
 		{"/uninstall.sh", http.StatusOK, "text/plain", "AIST_YES"},

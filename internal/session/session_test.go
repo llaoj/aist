@@ -330,14 +330,50 @@ func TestServiceDerivesTitle(t *testing.T) {
 	manager := newTestManager(t, nil, Settings{})
 	ctx := context.Background()
 	_, _ = manager.Create(ctx)
-	_, _ = manager.AppendUser(ctx, "帮我排查 nginx 502 错误，先看 upstream 和后端服务状态")
+	_, _ = manager.AppendUser(ctx, "帮我排查 /etc/nginx/conf.d/api.conf 的 502 错误，先看 upstream 和后端服务状态")
 	_, _ = manager.AppendAssistant(ctx, "先检查后端服务。", nil, nil, "p/m")
 	if err := manager.EnsureTitle(ctx); err != nil {
 		t.Fatalf("EnsureTitle: %v", err)
 	}
-	want := "帮我排查nginx502错误先看upstream和后端服务状态"
+	want := "帮我排查 /etc/nginx/conf.d/api.conf 的 502 错误，先看 upstream 和后端服务状态"
 	if got := manager.Current().Title; got != want {
 		t.Fatalf("title = %q, want %q", got, want)
+	}
+}
+
+func TestDeriveTitleNormalizesWhitespaceAndTruncates(t *testing.T) {
+	cases := []struct {
+		name     string
+		input    string
+		maxRunes int
+		want     string
+	}{
+		{
+			name:     "preserves paths and punctuation",
+			input:    "检查 /var/log/nginx/error.log: 为什么返回 502？",
+			maxRunes: 80,
+			want:     "检查 /var/log/nginx/error.log: 为什么返回 502？",
+		},
+		{
+			name:     "collapses multiline whitespace and strips control chars",
+			input:    "  排查\tnginx 502\n\n  查看 /etc/nginx/nginx.conf\x00  ",
+			maxRunes: 80,
+			want:     "排查 nginx 502 查看 /etc/nginx/nginx.conf",
+		},
+		{
+			name:     "truncates without dangling space before ellipsis",
+			input:    "check /etc/nginx/conf.d/default.conf upstream",
+			maxRunes: 20,
+			want:     "check /etc/nginx/...",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := deriveTitle(tc.input, tc.maxRunes); got != tc.want {
+				t.Fatalf("deriveTitle(%q, %d) = %q, want %q", tc.input, tc.maxRunes, got, tc.want)
+			}
+		})
 	}
 }
 

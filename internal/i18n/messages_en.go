@@ -105,6 +105,7 @@ var EnglishMessages = map[string]string{
 	"sessions.title":          "Select a session",
 	"sessions.key_hint":       "↑↓ select · Enter resume · Ctrl+C quit",
 	"sessions.empty":          "No saved sessions yet",
+	"sessions.continue_empty": "No saved sessions yet; starting a new session",
 	"sessions.restored":       "Restored session: %s (%d messages)",
 	"sessions.history_header": "History messages",
 	"sessions.compacted":      "Context compacted",

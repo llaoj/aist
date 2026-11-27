@@ -4,7 +4,14 @@
 
 Once a real conversation turn begins (interactive chat or pipe analysis), messages are persisted incrementally to `~/.aist/sessions/<id>/` (`0700` directory, `0600` files) — pressing `Ctrl+C` or closing a terminal never loses prior turns, while exiting an unused prompt creates no empty session record.
 
-List and resume recent sessions:
+Quickly resume the most recent session and continue chatting immediately:
+
+```bash
+aist -c
+aist -c "keep checking the nginx logs from earlier"
+```
+
+Or list and pick from older saved sessions:
 
 ```bash
 aist sessions
@@ -12,8 +19,8 @@ aist sessions
 
 ```text
 Select a session
-  2026-11-21 09:15  nginx502upstreamtimeout  (14 messages)
-  2026-11-20 18:42  prodredismemorycheck     (8 messages)
+  2026-11-21 09:15  nginx 502 upstream timeout in /etc/nginx/api.conf  (14 messages)
+  2026-11-20 18:42  prod redis memory check                          (8 messages)
 ↑↓ select · Enter resume · Ctrl+C quit
 ```
 

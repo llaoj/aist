@@ -105,6 +105,7 @@ var ChineseMessages = map[string]string{
 	"sessions.title":          "选择会话",
 	"sessions.key_hint":       "↑↓ 选择 · Enter 恢复 · Ctrl+C 退出",
 	"sessions.empty":          "暂无已保存的会话",
+	"sessions.continue_empty": "暂无历史会话，已为你开启新会话",
 	"sessions.restored":       "已恢复会话: %s (%d 条消息)",
 	"sessions.history_header": "历史消息",
 	"sessions.compacted":      "上下文已压缩",

@@ -51,13 +51,9 @@ var sessionsCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		title := selected.Title
-		if title == "" {
-			title = "(untitled)"
-		}
-		fmt.Println(translator.T("sessions.restored", title, selected.MessageCount))
+		fmt.Println(translator.T("sessions.restored", sessionDisplayTitle(selected.Title), selected.MessageCount))
 		fmt.Println()
-		if err := chatSession.Resume(); err != nil {
+		if err := chatSession.Resume(""); err != nil {
 			color.Red(translator.T("error.general", interactive.RenderErrorMessage(translator, err)))
 			return nil
 		}
@@ -66,11 +62,16 @@ var sessionsCmd = &cobra.Command{
 	},
 }
 
-func formatSessionListEntry(summary session.SessionInfo) string {
-	title := strings.TrimSpace(summary.Title)
+func sessionDisplayTitle(raw string) string {
+	title := strings.TrimSpace(raw)
 	if title == "" {
-		title = "(untitled)"
+		return "(untitled)"
 	}
+	return title
+}
+
+func formatSessionListEntry(summary session.SessionInfo) string {
+	title := sessionDisplayTitle(summary.Title)
 	updated := summary.UpdatedAt.Local()
 	if updated.IsZero() {
 		updated = time.Now()

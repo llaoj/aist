@@ -499,24 +499,35 @@ func normalizeSummary(summary string) string {
 
 func deriveTitle(text string, maxRunes int) string {
 	var sb strings.Builder
+	prevSpace := false
 	for _, r := range text {
-		if unicode.IsLetter(r) || unicode.IsDigit(r) {
-			sb.WriteRune(r)
+		if unicode.IsSpace(r) {
+			if sb.Len() > 0 && !prevSpace {
+				sb.WriteByte(' ')
+				prevSpace = true
+			}
+			continue
 		}
+		if unicode.IsControl(r) {
+			continue
+		}
+		sb.WriteRune(r)
+		prevSpace = false
 	}
 	return truncateRunes(sb.String(), maxRunes)
 }
 
 func truncateRunes(text string, maxRunes int) string {
+	trimmed := strings.TrimSpace(text)
 	if maxRunes <= 0 {
-		return text
+		return trimmed
 	}
-	runes := []rune(strings.TrimSpace(text))
+	runes := []rune(trimmed)
 	if len(runes) <= maxRunes {
-		return string(runes)
+		return trimmed
 	}
 	if maxRunes <= 3 {
 		return string(runes[:maxRunes])
 	}
-	return string(runes[:maxRunes-3]) + "..."
+	return strings.TrimRightFunc(string(runes[:maxRunes-3]), unicode.IsSpace) + "..."
 }

@@ -152,7 +152,7 @@ function chineseSidebar(): DefaultTheme.SidebarItem[] {
 export default withMermaid(
   defineConfig({
     title: 'AIST',
-    description: 'On-Call AI Shell Assistant for Server Operations & Troubleshooting',
+    description: 'On-Call AI Shell assistanT for Server Operations & Troubleshooting',
     cleanUrls: true,
     vite: {
       optimizeDeps: {
