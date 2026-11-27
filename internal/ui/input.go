@@ -34,6 +34,7 @@ type inputModel struct {
 func newInputModel(prompt, keyHint string) inputModel {
 	ti := textarea.New()
 	ti.SetStyles(textarea.DefaultStyles(true))
+	ti.SetVirtualCursor(false)
 	ti.Placeholder = ""
 	ti.ShowLineNumbers = false
 	ti.DynamicHeight = true
@@ -58,7 +59,9 @@ func newInputModel(prompt, keyHint string) inputModel {
 }
 
 func (m inputModel) Init() tea.Cmd {
-	return tea.Batch(textarea.Blink, tea.RequestBackgroundColor)
+	// Avoid textarea.Blink so idle prompts emit no periodic stdout redraws,
+	// which would otherwise snap scrollback to the bottom in terminals like PuTTY.
+	return tea.RequestBackgroundColor
 }
 
 func (m inputModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
