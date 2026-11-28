@@ -8,5 +8,12 @@ const (
 )
 
 func SeparatorLine() string {
-	return strings.Repeat(separatorChar, separatorCount)
+	return SeparatorLineWidth(separatorCount)
+}
+
+func SeparatorLineWidth(width int) string {
+	if width < separatorCount {
+		width = separatorCount
+	}
+	return strings.Repeat(separatorChar, width)
 }

@@ -474,7 +474,7 @@ switch_to_version() {
 main() {
     echo ""
     echo "╔════════════════════════════════════════╗"
-    echo "║   AIST RUN SCRIPT                       ║"
+    echo "║   AIST RUN SCRIPT                      ║"
     echo "╚════════════════════════════════════════╝"
     echo ""
 
