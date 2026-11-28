@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/llaoj/aist/internal/termio"
 	"golang.org/x/term"
@@ -22,11 +23,11 @@ const (
 )
 
 // PromptSelect displays a single-choice selector and returns the selected index.
-func PromptSelect(prompt, keyHint string, options []string) (int, error) {
-	return promptSelectTTY(os.Stdin, os.Stdout, prompt, keyHint, options)
+func PromptSelect(prompt, keyHint, confirmExitHint string, options []string) (int, error) {
+	return promptSelectTTY(os.Stdin, os.Stdout, prompt, keyHint, confirmExitHint, options)
 }
 
-func promptSelectTTY(in, out *os.File, prompt, keyHint string, options []string) (int, error) {
+func promptSelectTTY(in, out *os.File, prompt, keyHint, confirmExitHint string, options []string) (int, error) {
 	if len(options) == 0 {
 		return 0, nil
 	}
@@ -56,14 +57,38 @@ func promptSelectTTY(in, out *os.File, prompt, keyHint string, options []string)
 
 	selected := 0
 	prevRows := 0
+	var confirmExitUntil time.Time
 	redraw := func(final bool) {
-		prevRows = renderSelect(out, prompt, keyHint, options, selected, final, prevRows)
+		styledHint := ""
+		if !final {
+			if confirmExitHint != "" && !confirmExitUntil.IsZero() && time.Now().Before(confirmExitUntil) {
+				styledHint = exitConfirmHintStyle.Sprint(confirmExitHint)
+			} else if keyHint != "" {
+				styledHint = keyHintStyle.Sprint(keyHint)
+			}
+		}
+		prevRows = renderSelect(out, prompt, styledHint, options, selected, final, prevRows)
 	}
 
 	redraw(false)
 	for {
-		key, err := readSelectKey(reader)
+		var wait time.Duration
+		if !confirmExitUntil.IsZero() {
+			wait = time.Until(confirmExitUntil)
+			if wait <= 0 {
+				confirmExitUntil = time.Time{}
+				redraw(false)
+				continue
+			}
+		}
+
+		key, err := readSelectKey(reader, wait)
 		if err != nil {
+			if errors.Is(err, termio.ErrTimeout) {
+				confirmExitUntil = time.Time{}
+				redraw(false)
+				continue
+			}
 			if errors.Is(err, io.EOF) {
 				redraw(true)
 				return 0, ErrInterrupted
@@ -73,26 +98,34 @@ func promptSelectTTY(in, out *os.File, prompt, keyHint string, options []string)
 
 		switch key {
 		case selectKeyPrev:
+			confirmExitUntil = time.Time{}
 			if selected > 0 {
 				selected--
-				redraw(false)
 			}
+			redraw(false)
 		case selectKeyNext:
+			confirmExitUntil = time.Time{}
 			if selected < len(options)-1 {
 				selected++
-				redraw(false)
 			}
+			redraw(false)
 		case selectKeyEnter:
+			confirmExitUntil = time.Time{}
 			redraw(true)
 			return selected, nil
 		case selectKeyInterrupt:
-			redraw(true)
-			return 0, ErrInterrupted
+			now := time.Now()
+			if confirmExitHint == "" || (!confirmExitUntil.IsZero() && now.Before(confirmExitUntil)) {
+				redraw(true)
+				return 0, ErrInterrupted
+			}
+			confirmExitUntil = now.Add(exitConfirmWindow)
+			redraw(false)
 		}
 	}
 }
 
-func renderSelect(out *os.File, prompt, keyHint string, options []string, selected int, final bool, prevRows int) int {
+func renderSelect(out *os.File, prompt, styledHint string, options []string, selected int, final bool, prevRows int) int {
 	promptLines := strings.Split(prompt, "\n")
 	lines := make([]string, 0, len(promptLines)+len(options)+1)
 	lines = append(lines, promptLines...)
@@ -103,15 +136,23 @@ func renderSelect(out *os.File, prompt, keyHint string, options []string, select
 			lines = append(lines, "  [ ] "+option)
 		}
 	}
-	if !final && keyHint != "" {
-		lines = append(lines, keyHintStyle.Sprint(keyHint))
+	if !final && styledHint != "" {
+		lines = append(lines, styledHint)
 	}
 	return renderTerminalBlock(out, lines, final, prevRows)
 }
 
-func readSelectKey(reader *termio.Reader) (selectKey, error) {
+func readSelectKey(reader *termio.Reader, timeout time.Duration) (selectKey, error) {
 	var b [1]byte
-	n, err := reader.Read(b[:])
+	var (
+		n   int
+		err error
+	)
+	if timeout > 0 {
+		n, err = reader.ReadTimeout(b[:], timeout)
+	} else {
+		n, err = reader.Read(b[:])
+	}
 	if err != nil || n == 0 {
 		return selectKeyIgnore, err
 	}

@@ -53,7 +53,7 @@ func TestStartSpinnerRendersHintOnLineBelowAndClearsOnStop(t *testing.T) {
 	defer cancel()
 
 	hint := "Esc 取消请求 · Ctrl+C 退出"
-	stop := startSpinnerTTY(tty, tty, "思考中", hint, cancel)
+	stop := startSpinnerTTY(tty, tty, "思考中", hint, "再按一次 Ctrl+C 退出", cancel)
 
 	deadline := time.Now().Add(time.Second)
 	for time.Now().Before(deadline) {
@@ -104,7 +104,7 @@ func TestStartSpinnerEscCancelsWithoutInterruptError(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	stop := startSpinnerTTY(tty, tty, "思考中", "Esc 取消请求 · Ctrl+C 退出", cancel)
+	stop := startSpinnerTTY(tty, tty, "思考中", "Esc 取消请求 · Ctrl+C 退出", "再按一次 Ctrl+C 退出", cancel)
 	defer func() { _ = stop() }()
 
 	time.Sleep(15 * time.Millisecond)
@@ -141,30 +141,62 @@ func TestStartSpinnerCtrlCCancelsAndReturnsErrInterrupted(t *testing.T) {
 	defer ptmx.Close()
 	defer tty.Close()
 
-	go func() { _, _ = io.Copy(io.Discard, ptmx) }()
+	var out safeBuffer
+	copyDone := make(chan struct{})
+	go func() {
+		defer close(copyDone)
+		_, _ = io.Copy(&out, ptmx)
+	}()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	stop := startSpinnerTTY(tty, tty, "思考中", "Esc 取消请求 · Ctrl+C 退出", cancel)
+	confirmHint := "再按一次 Ctrl+C 退出"
+	stop := startSpinnerTTY(tty, tty, "思考中", "Esc 取消请求 · Ctrl+C 退出", confirmHint, cancel)
 
 	time.Sleep(15 * time.Millisecond)
-	if _, err := ptmx.Write([]byte{0x03}); err != nil {
-		t.Fatalf("write ctrl+c: %v", err)
+	if _, err := ptmx.Write([]byte{keyCtrlC}); err != nil {
+		t.Fatalf("write first ctrl+c: %v", err)
+	}
+
+	// First Ctrl+C shows confirmation hint and must not cancel yet.
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		if strings.Contains(out.String(), confirmHint) {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if !strings.Contains(out.String(), confirmHint) {
+		t.Fatalf("expected confirm hint %q after first Ctrl+C, got %q", confirmHint, out.String())
+	}
+	select {
+	case <-ctx.Done():
+		t.Fatal("first Ctrl+C unexpectedly canceled spinner context")
+	case <-time.After(60 * time.Millisecond):
+	}
+
+	// Second Ctrl+C cancels and returns ErrInterrupted.
+	if _, err := ptmx.Write([]byte{keyCtrlC}); err != nil {
+		t.Fatalf("write second ctrl+c: %v", err)
 	}
 
 	select {
 	case <-ctx.Done():
 	case <-time.After(time.Second):
-		t.Fatal("Ctrl+C did not cancel spinner context")
+		t.Fatal("second Ctrl+C did not cancel spinner context")
 	}
 
 	if err := stop(); !errors.Is(err, ErrInterrupted) {
-		t.Fatalf("stop() after Ctrl+C = %v, want ErrInterrupted", err)
+		t.Fatalf("stop() after second Ctrl+C = %v, want ErrInterrupted", err)
 	}
 	if err := stop(); !errors.Is(err, ErrInterrupted) {
 		t.Fatalf("idempotent stop() after Ctrl+C = %v, want ErrInterrupted", err)
 	}
+
+	_ = tty.Close()
+	_ = ptmx.Close()
+	<-copyDone
 }
 
 func TestStartSpinnerEscImmediatelyFollowedByCtrlCReturnsErrInterrupted(t *testing.T) {
@@ -180,20 +212,24 @@ func TestStartSpinnerEscImmediatelyFollowedByCtrlCReturnsErrInterrupted(t *testi
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	stop := startSpinnerTTY(tty, tty, "思考中", "Esc 取消请求 · Ctrl+C 退出", cancel)
+	stop := startSpinnerTTY(tty, tty, "思考中", "Esc 取消请求 · Ctrl+C 退出", "再按一次 Ctrl+C 退出", cancel)
 
 	time.Sleep(15 * time.Millisecond)
 	if _, err := ptmx.Write([]byte{keyEsc, keyCtrlC}); err != nil {
 		t.Fatalf("write esc+ctrl+c: %v", err)
 	}
+	time.Sleep(40 * time.Millisecond)
+	if _, err := ptmx.Write([]byte{keyCtrlC}); err != nil {
+		t.Fatalf("write second ctrl+c: %v", err)
+	}
 
 	select {
 	case <-ctx.Done():
 	case <-time.After(time.Second):
-		t.Fatal("Esc+Ctrl+C did not cancel spinner context")
+		t.Fatal("Esc+Ctrl+C followed by Ctrl+C did not cancel spinner context")
 	}
 
 	if err := stop(); !errors.Is(err, ErrInterrupted) {
-		t.Fatalf("stop() after Esc+Ctrl+C = %v, want ErrInterrupted", err)
+		t.Fatalf("stop() after Esc+Ctrl+C + Ctrl+C = %v, want ErrInterrupted", err)
 	}
 }

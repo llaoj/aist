@@ -8,15 +8,19 @@ import (
 	"time"
 
 	"charm.land/lipgloss/v2"
+	"github.com/fatih/color"
 	"github.com/llaoj/aist/internal/termio"
 	"golang.org/x/term"
 )
 
 const (
-	keyCtrlC = 0x03
-	keyBEL   = 0x07
-	keyEsc   = 0x1b
+	keyCtrlC          = 0x03
+	keyBEL            = 0x07
+	keyEsc            = 0x1b
+	exitConfirmWindow = 2 * time.Second
 )
+
+var exitConfirmHintStyle = color.New(color.FgYellow)
 
 // renderTerminalBlock clears prevRows above the cursor and writes lines using
 // CRLF so output aligns at column 0 even while raw mode disables OPOST.

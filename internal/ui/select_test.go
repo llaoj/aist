@@ -48,7 +48,7 @@ func TestPromptSelectSingleEnterAcrossManyRounds(t *testing.T) {
 			var gotErr error
 			go func() {
 				defer close(done)
-				got, gotErr = promptSelectTTY(tty, tty, "是否执行此命令?", "↑↓ 选择 · Enter 确认", options)
+				got, gotErr = promptSelectTTY(tty, tty, "是否执行此命令?", "↑↓ 选择 · Enter 确认", "再按一次 Ctrl+C 退出", options)
 			}()
 
 			time.Sleep(10 * time.Millisecond)
@@ -83,13 +83,22 @@ func TestPromptSelectCtrlCReturnsErrInterrupted(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		_, err := promptSelectTTY(tty, tty, "是否执行此命令?", "↑↓ 选择 · Enter 确认", []string{"执行", "跳过"})
+		_, err := promptSelectTTY(tty, tty, "是否执行此命令?", "↑↓ 选择 · Enter 确认", "再按一次 Ctrl+C 退出", []string{"执行", "跳过"})
 		done <- err
 	}()
 
 	time.Sleep(10 * time.Millisecond)
-	if _, err := ptmx.Write([]byte{0x03}); err != nil {
-		t.Fatalf("write ctrl+c: %v", err)
+	if _, err := ptmx.Write([]byte{keyCtrlC}); err != nil {
+		t.Fatalf("write first ctrl+c: %v", err)
+	}
+	select {
+	case err := <-done:
+		t.Fatalf("promptSelectTTY exited on single Ctrl+C (err=%v)", err)
+	case <-time.After(60 * time.Millisecond):
+	}
+
+	if _, err := ptmx.Write([]byte{keyCtrlC}); err != nil {
+		t.Fatalf("write second ctrl+c: %v", err)
 	}
 
 	select {
@@ -98,6 +107,6 @@ func TestPromptSelectCtrlCReturnsErrInterrupted(t *testing.T) {
 			t.Fatalf("err = %v, want ErrInterrupted", err)
 		}
 	case <-time.After(2 * time.Second):
-		t.Fatal("promptSelectTTY did not exit on Ctrl+C")
+		t.Fatal("promptSelectTTY did not exit on second Ctrl+C")
 	}
 }

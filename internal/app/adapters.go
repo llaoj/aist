@@ -22,6 +22,7 @@ func (h *callHooks) BeforeCall(cancel context.CancelFunc) {
 	stop := ui.StartSpinner(
 		h.translator.T("interactive.thinking"),
 		h.translator.T("interactive.thinking_key_hint"),
+		h.translator.T("interactive.ctrl_c_confirm_exit"),
 		cancel,
 	)
 	h.mu.Lock()

@@ -17,6 +17,7 @@ var EnglishMessages = map[string]string{
 	"interactive.think_content":         "Thinking Content:",
 	"interactive.esc_interrupt":         "✗ Canceled. Continue typing.",
 	"interactive.thinking_key_hint":     "Esc to cancel · Ctrl+C to exit",
+	"interactive.ctrl_c_confirm_exit":   "Press Ctrl+C again to exit",
 	"interactive.file_change":           "File edit",
 	"interactive.file_change_reason":    "Reason",
 	"interactive.file_change_target":    "Target",

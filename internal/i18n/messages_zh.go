@@ -17,6 +17,7 @@ var ChineseMessages = map[string]string{
 	"interactive.think_content":         "思考内容:",
 	"interactive.esc_interrupt":         "✗ 已取消，可继续输入",
 	"interactive.thinking_key_hint":     "Esc 取消请求 · Ctrl+C 退出",
+	"interactive.ctrl_c_confirm_exit":   "再按一次 Ctrl+C 退出",
 	"interactive.file_change":           "文件修改",
 	"interactive.file_change_reason":    "原因",
 	"interactive.file_change_target":    "目标",

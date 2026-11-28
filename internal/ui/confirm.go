@@ -25,12 +25,12 @@ type confirmOption struct {
 
 // PromptConfirm displays a confirmation prompt and returns the result.
 func PromptConfirm(prompt string, translator *i18n.I18n) (ConfirmDecision, error) {
-	return promptConfirm(prompt, translator.T("confirm.key_hint"), defaultConfirmOptions(translator))
+	return promptConfirm(prompt, translator.T("confirm.key_hint"), translator.T("interactive.ctrl_c_confirm_exit"), defaultConfirmOptions(translator))
 }
 
 // PromptCommandConfirm displays a shell-command confirmation.
 func PromptCommandConfirm(prompt string, translator *i18n.I18n) (ConfirmDecision, error) {
-	return promptConfirm(prompt, translator.T("confirm.key_hint"), commandConfirmOptions(translator))
+	return promptConfirm(prompt, translator.T("confirm.key_hint"), translator.T("interactive.ctrl_c_confirm_exit"), commandConfirmOptions(translator))
 }
 
 func defaultConfirmOptions(translator *i18n.I18n) []confirmOption {
@@ -49,7 +49,7 @@ func commandConfirmOptions(translator *i18n.I18n) []confirmOption {
 	}
 }
 
-func promptConfirm(prompt, keyHint string, options []confirmOption) (ConfirmDecision, error) {
+func promptConfirm(prompt, keyHint, confirmExitHint string, options []confirmOption) (ConfirmDecision, error) {
 	labels := make([]string, 0, len(options))
 	decisions := make([]ConfirmDecision, 0, len(options))
 	for _, option := range options {
@@ -57,7 +57,7 @@ func promptConfirm(prompt, keyHint string, options []confirmOption) (ConfirmDeci
 		decisions = append(decisions, option.decision)
 	}
 
-	selected, err := PromptSelect(prompt, keyHint, labels)
+	selected, err := PromptSelect(prompt, keyHint, confirmExitHint, labels)
 	if err != nil {
 		if errors.Is(err, ErrInterrupted) {
 			return ConfirmSkip, ErrInterrupted

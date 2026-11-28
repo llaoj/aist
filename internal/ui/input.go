@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/textarea"
@@ -22,16 +23,23 @@ var ErrInterrupted = interactive.ErrInterrupted
 
 var keyHintStyle = color.New(color.Faint)
 
-// inputModel is a custom text input model using bubbletea
-type inputModel struct {
-	textArea    textarea.Model
-	prompt      string
-	keyHint     string
-	done        bool
-	interrupted bool
+type exitConfirmTimeoutMsg struct {
+	seq int
 }
 
-func newInputModel(prompt, keyHint string) inputModel {
+// inputModel is a custom text input model using bubbletea
+type inputModel struct {
+	textArea         textarea.Model
+	prompt           string
+	keyHint          string
+	confirmExitHint  string
+	confirmExitUntil time.Time
+	confirmExitSeq   int
+	done             bool
+	interrupted      bool
+}
+
+func newInputModel(prompt, keyHint, confirmExitHint string) inputModel {
 	ti := textarea.New()
 	ti.SetStyles(textarea.DefaultStyles(true))
 	ti.SetVirtualCursor(false)
@@ -52,9 +60,10 @@ func newInputModel(prompt, keyHint string) inputModel {
 	ti.KeyMap = km
 
 	return inputModel{
-		textArea: ti,
-		prompt:   prompt,
-		keyHint:  keyHint,
+		textArea:        ti,
+		prompt:          prompt,
+		keyHint:         keyHint,
+		confirmExitHint: confirmExitHint,
 	}
 }
 
@@ -75,18 +84,34 @@ func (m inputModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.BackgroundColorMsg:
 		m.textArea.SetStyles(textarea.DefaultStyles(msg.IsDark()))
 
+	case exitConfirmTimeoutMsg:
+		if msg.seq == m.confirmExitSeq {
+			m.confirmExitUntil = time.Time{}
+		}
+		return m, nil
+
 	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "enter":
+			m.confirmExitUntil = time.Time{}
 			m.textArea.Blur()
 			m.done = true
 			return m, tea.Quit
 		case "ctrl+c":
-			m.textArea.Blur()
-			m.done = true
-			m.interrupted = true
-			return m, tea.Quit
+			if m.confirmExitHint == "" || (!m.confirmExitUntil.IsZero() && time.Now().Before(m.confirmExitUntil)) {
+				m.textArea.Blur()
+				m.done = true
+				m.interrupted = true
+				return m, tea.Quit
+			}
+			m.confirmExitUntil = time.Now().Add(exitConfirmWindow)
+			m.confirmExitSeq++
+			seq := m.confirmExitSeq
+			return m, tea.Tick(exitConfirmWindow, func(time.Time) tea.Msg {
+				return exitConfirmTimeoutMsg{seq: seq}
+			})
 		default:
+			m.confirmExitUntil = time.Time{}
 			if !m.textArea.Focused() {
 				cmd = m.textArea.Focus()
 				cmds = append(cmds, cmd)
@@ -115,8 +140,12 @@ func (m inputModel) View() tea.View {
 
 	lines := []string{m.headerView(), m.textArea.View()}
 	// The hint disappears on submit so it does not pile up in scrollback.
-	if !m.done && m.keyHint != "" {
-		lines = append(lines, keyHintStyle.Sprint(m.keyHint))
+	if !m.done {
+		if !m.confirmExitUntil.IsZero() && time.Now().Before(m.confirmExitUntil) {
+			lines = append(lines, exitConfirmHintStyle.Sprint(m.confirmExitHint))
+		} else if m.keyHint != "" {
+			lines = append(lines, keyHintStyle.Sprint(m.keyHint))
+		}
 	}
 	f := strings.Join(append(lines, "\n"), "\n")
 
@@ -140,8 +169,8 @@ func readLine(r io.Reader) (string, error) {
 }
 
 // PromptEditor displays a multi-line editor and returns its content.
-func PromptEditor(prompt, keyHint string) (string, error) {
-	model := newInputModel(prompt, keyHint)
+func PromptEditor(prompt, keyHint, confirmExitHint string) (string, error) {
+	model := newInputModel(prompt, keyHint, confirmExitHint)
 	p := tea.NewProgram(model)
 	final, err := p.Run()
 	// Compensate for the trailing newline in View() which prevents bubbletea's

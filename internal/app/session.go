@@ -161,7 +161,11 @@ type terminalInput struct {
 }
 
 func (i terminalInput) ReadInput() (string, error) {
-	input, err := ui.PromptEditor(i.translator.T("interactive.input_prompt"), i.translator.T("interactive.input_key_hint"))
+	input, err := ui.PromptEditor(
+		i.translator.T("interactive.input_prompt"),
+		i.translator.T("interactive.input_key_hint"),
+		i.translator.T("interactive.ctrl_c_confirm_exit"),
+	)
 	if errors.Is(err, ui.ErrInterrupted) {
 		return "", interactive.ErrInterrupted
 	}

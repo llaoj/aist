@@ -38,7 +38,12 @@ var sessionsCmd = &cobra.Command{
 		for _, summary := range summaries {
 			options = append(options, formatSessionListEntry(summary))
 		}
-		index, err := ui.PromptSelect(translator.T("sessions.title"), translator.T("sessions.key_hint"), options)
+		index, err := ui.PromptSelect(
+			translator.T("sessions.title"),
+			translator.T("sessions.key_hint"),
+			translator.T("interactive.ctrl_c_confirm_exit"),
+			options,
+		)
 		if err != nil {
 			if errors.Is(err, ui.ErrInterrupted) {
 				return nil

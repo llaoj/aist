@@ -56,7 +56,8 @@ func (r errReader) Read([]byte) (int, error) {
 var _ io.Reader = errReader{}
 
 func TestInputModelUsesNativeCursorAndEmitsNoIdleRedraws(t *testing.T) {
-	model := newInputModel("用户:", "Enter 发送 · Ctrl+C 退出")
+	confirmHint := "再按一次 Ctrl+C 退出"
+	model := newInputModel("用户:", "Enter 发送 · Ctrl+C 退出", confirmHint)
 	if model.textArea.VirtualCursor() {
 		t.Fatal("expected native terminal cursor (VirtualCursor == false)")
 	}
@@ -107,8 +108,31 @@ func TestInputModelUsesNativeCursorAndEmitsNoIdleRedraws(t *testing.T) {
 		t.Fatalf("idle prompt emitted %d unexpected bytes (would reset scrollback in PuTTY): %q", afterLen-settledLen, out.String()[settledLen:])
 	}
 
+	// First Ctrl+C arms confirmation hint and must not quit yet.
+	// BubbleTea's diff renderer reuses the unchanged "Ctrl+C 退出" suffix in place,
+	// so check for the newly written prefix "再按一次".
 	if _, err := ptmx.Write([]byte{keyCtrlC}); err != nil {
-		t.Fatalf("write ctrl+c: %v", err)
+		t.Fatalf("write first ctrl+c: %v", err)
+	}
+	deadline = time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		if strings.Contains(out.String(), "再按一次") {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if !strings.Contains(out.String(), "再按一次") {
+		t.Fatalf("expected confirm hint prefix after first Ctrl+C, got %q", out.String())
+	}
+	select {
+	case err := <-runDone:
+		t.Fatalf("program exited on single Ctrl+C (err=%v)", err)
+	case <-time.After(60 * time.Millisecond):
+	}
+
+	// Second Ctrl+C within window exits cleanly.
+	if _, err := ptmx.Write([]byte{keyCtrlC}); err != nil {
+		t.Fatalf("write second ctrl+c: %v", err)
 	}
 	select {
 	case err := <-runDone:
@@ -116,7 +140,7 @@ func TestInputModelUsesNativeCursorAndEmitsNoIdleRedraws(t *testing.T) {
 			t.Fatalf("p.Run: %v", err)
 		}
 	case <-time.After(2 * time.Second):
-		t.Fatal("program did not exit on Ctrl+C")
+		t.Fatal("program did not exit on second Ctrl+C")
 	}
 
 	_ = tty.Close()
