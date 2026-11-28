@@ -212,3 +212,23 @@ func TestTerminalRendererExecutionFinishedLocalized(t *testing.T) {
 		}
 	}
 }
+
+func TestTerminalRendererSanitizesControlSequencesAcrossAllOutputs(t *testing.T) {
+	renderer := terminalRenderer{translator: i18n.New("zh")}
+	out := captureOutput(t, func() {
+		renderer.RenderUserMessage("\x1b[?3h用户提问\x1b[8;40;120t")
+		renderer.RenderExecutionOutput("\x1b[?3l\x1b[32m正常日志\x1b[0m\x1bc")
+		renderer.RenderAssistantMessage("**结论**：\x1b[8;50;132t一切正常\x1b]0;hijack\x07")
+	})
+
+	for _, forbidden := range []string{"\x1b[?3h", "\x1b[?3l", "\x1b[8;", "\x1bc", "\x1b]0;"} {
+		if strings.Contains(out, forbidden) {
+			t.Fatalf("rendered output leaked dangerous control sequence %q: %q", forbidden, out)
+		}
+	}
+	for _, want := range []string{"用户提问", "\x1b[32m正常日志\x1b[0m", "结论", "一切正常"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("rendered output missing %q: %q", want, out)
+		}
+	}
+}

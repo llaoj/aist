@@ -30,7 +30,8 @@ func (r terminalRenderer) RenderWelcome(version string) {
 }
 
 func (r terminalRenderer) RenderUserMessage(text string) {
-	fmt.Printf("%s:\n%s\n", r.translator.T("interactive.user_label"), strings.TrimRight(text, "\n"))
+	text = ui.SanitizeTerminalOutput(strings.TrimRight(text, "\r\n"))
+	fmt.Printf("%s:\n%s\n", r.translator.T("interactive.user_label"), text)
 	ui.PrintRegionEnd()
 }
 
@@ -41,6 +42,7 @@ func (r terminalRenderer) RenderAssistantMessage(content string) {
 	content = ui.RenderThinkContent(content, r.translator.T("interactive.think_content"))
 	content = strings.TrimSpace(content)
 	content = ui.RemoveBlankLines(ui.RenderMarkdown(content))
+	content = ui.SanitizeTerminalOutput(content)
 	if content == "" {
 		return
 	}
@@ -65,7 +67,7 @@ func (r terminalRenderer) RenderFileChange(change *fileedit.Change) {
 }
 
 func (r terminalRenderer) RenderExecutionOutput(text string) {
-	text = strings.TrimRight(text, "\n")
+	text = ui.SanitizeTerminalOutput(strings.TrimRight(text, "\r\n"))
 	if text == "" {
 		return
 	}
