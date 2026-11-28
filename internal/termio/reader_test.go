@@ -109,6 +109,87 @@ func TestReadTimeoutAndDrainInput(t *testing.T) {
 	}
 }
 
+func TestReaderReturnsEOFWhenPeerHangsUp(t *testing.T) {
+	rPipe, wPipe, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("Pipe: %v", err)
+	}
+	defer rPipe.Close()
+
+	done := make(chan struct{})
+	defer close(done)
+	reader, err := NewReader(int(rPipe.Fd()), done)
+	if err != nil {
+		t.Fatalf("NewReader: %v", err)
+	}
+	defer reader.Close()
+
+	_ = wPipe.Close()
+	if _, err := reader.ReadTimeout(make([]byte, 8), time.Second); !errors.Is(err, io.EOF) {
+		t.Fatalf("hung-up Read err = %v, want io.EOF", err)
+	}
+}
+
+func TestReaderUsesPollFallbackForLargeDescriptors(t *testing.T) {
+	rPipe, wPipe, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("Pipe: %v", err)
+	}
+	defer rPipe.Close()
+	defer wPipe.Close()
+
+	bigFd, err := unix.FcntlInt(rPipe.Fd(), unix.F_DUPFD, maxSelectFD+64)
+	if err != nil {
+		t.Skipf("cannot allocate descriptor above FD_SETSIZE: %v", err)
+	}
+	defer syscall.Close(bigFd)
+	if bigFd < maxSelectFD {
+		t.Fatalf("dup fd = %d, want >= %d", bigFd, maxSelectFD)
+	}
+
+	done := make(chan struct{})
+	defer close(done)
+	reader, err := NewReader(bigFd, done)
+	if err != nil {
+		t.Fatalf("NewReader: %v", err)
+	}
+	defer reader.Close()
+
+	buf := make([]byte, 8)
+	if _, err := reader.ReadTimeout(buf, 15*time.Millisecond); !errors.Is(err, ErrTimeout) {
+		t.Fatalf("ReadTimeout err = %v, want ErrTimeout", err)
+	}
+	if _, err := wPipe.Write([]byte("ok")); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	n, err := reader.ReadTimeout(buf, time.Second)
+	if err != nil || string(buf[:n]) != "ok" {
+		t.Fatalf("Read = (%q, %v), want (\"ok\", nil)", string(buf[:n]), err)
+	}
+}
+
+// Darwin's poll(2) reports POLLNVAL immediately for /dev/tty, which used to
+// surface as a spurious io.EOF and made prompts exit by themselves.
+func TestReaderTimesOutOnControllingTTYWithoutSpuriousEOF(t *testing.T) {
+	tty, err := os.OpenFile("/dev/tty", os.O_RDONLY, 0)
+	if err != nil {
+		t.Skipf("no controlling terminal: %v", err)
+	}
+	defer tty.Close()
+
+	done := make(chan struct{})
+	defer close(done)
+	reader, err := NewReader(int(tty.Fd()), done)
+	if err != nil {
+		t.Fatalf("NewReader: %v", err)
+	}
+	defer reader.Close()
+
+	if _, err := reader.ReadTimeout(make([]byte, 8), 30*time.Millisecond); !errors.Is(err, ErrTimeout) {
+		t.Fatalf("ReadTimeout on /dev/tty err = %v, want ErrTimeout", err)
+	}
+}
+
 type flakyNonblockWriter struct {
 	buf       bytes.Buffer
 	chunkSize int
